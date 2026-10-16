@@ -12,6 +12,8 @@
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 
+#include <regex.h>
+
 // Static variables define to help the developer
 #define BROOK_OK 0
 #define BROOK_ERROR -1
