@@ -1,5 +1,5 @@
-#ifndef _BROOK_CONFIG_H
-#define _BROOK_CONFIG_H
+#ifndef _BROOK_CORE_H
+#define _BROOK_CORE_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +17,7 @@
 #define BROOK_ERROR -1
 #define BROOK_DONE -2
 
+#include "config.h"
 #include "logger.h"
 #include "socket.h"
 
