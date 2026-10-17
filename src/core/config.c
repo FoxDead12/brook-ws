@@ -1,16 +1,21 @@
 #include "core/config.h"
-#include "core/core.h"
+
+#include <fcntl.h>
+#include <regex.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 /*
  * Method wo will read and store the config of server from file
  */
-int brook_config(const char *config_file_path) {
+int brook_config(const char *config_file_path, brook_config_t *config) {
 
   int file_fd;
   regex_t reegex;
   regmatch_t match[3];
   char buffer[1024];
-  brook_config_t config;
 
   // Open destination file in read only mode
   file_fd = open(config_file_path, O_RDONLY, 0);
@@ -21,7 +26,7 @@ int brook_config(const char *config_file_path) {
   }
 
   // Create regex in memory
-  if (regcomp(&reegex, "([[:alnum:]_]+):[[:space:]]*([[:alnum:]_]+)", REG_EXTENDED) != 0) {
+  if (regcomp(&reegex, "([[:alnum:]_]+):[[:space:]]*([[:alnum:]_/]+)", REG_EXTENDED) != 0) {
     perror("regex");
     return BROOK_ERROR;
   }
@@ -49,7 +54,7 @@ int brook_config(const char *config_file_path) {
     // Set in conf struct the initial values
     char *key = buffer + match[1].rm_so;
     char *value = buffer + match[2].rm_so;
-    if (brook_config_set_key(&config, key, match[1].rm_eo - match[1].rm_so, value, match[2].rm_eo - match[2].rm_so) == BROOK_ERROR) {
+    if (brook_config_set_key(config, key, match[1].rm_eo - match[1].rm_so, value, match[2].rm_eo - match[2].rm_so) == BROOK_ERROR) {
       fprintf(stderr, "invalid line in conf file key don't exist: %s\n", buffer);
       return BROOK_ERROR;
     }
@@ -63,6 +68,7 @@ int brook_config_set_key(brook_config_t *conf, char *key, size_t key_size, char 
   // Set all possible keys defined in config file
   const char *port = "port";
   const char *workers = "workers";
+  const char *logger = "logger";
 
   char *value_end = value + value_size;
 
@@ -71,6 +77,8 @@ int brook_config_set_key(brook_config_t *conf, char *key, size_t key_size, char 
     conf->port = strtol(value, &value_end, 10);
   } else if (strlen(workers) == key_size && strncmp(key, workers, key_size) == 0) {
     conf->workers = strtol(value, &value_end, 10);
+  } else if (strlen(logger) == key_size && strncmp(key, logger, key_size) == 0) {
+    strncpy(conf->logger, value, value_size);
   } else {
     return BROOK_ERROR;
   }

@@ -1,4 +1,12 @@
-#include "core/core.h"
+#include "core/socket.h"
+
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdio.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 /*
  * Method to create a socket binding to a port in system
