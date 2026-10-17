@@ -1,9 +1,5 @@
 #include "core/config.h"
 #include "core/core.h"
-#include <_regex.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <string.h>
 
 /*
  * Method wo will read and store the config of server from file

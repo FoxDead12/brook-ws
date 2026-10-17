@@ -14,6 +14,7 @@
 
 #include <regex.h>
 #include <stddef.h>
+#include <string.h>
 
 // Static variables define to help the developer
 #define BROOK_OK 0
