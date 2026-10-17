@@ -1,6 +1,9 @@
+#include "core/config.h"
 #include "core/core.h"
 #include <_regex.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 /*
  * Method wo will read and store the config of server from file
@@ -11,6 +14,7 @@ int brook_config(const char *config_file_path) {
   regex_t reegex;
   regmatch_t match[3];
   char buffer[1024];
+  brook_config_t config;
 
   // Open destination file in read only mode
   file_fd = open(config_file_path, O_RDONLY, 0);
@@ -41,6 +45,28 @@ int brook_config(const char *config_file_path) {
     }
 
     printf("read %d: %.*s\n", b, b, buffer);
+
+    char *key = buffer + match[1].rm_so;
+    char *value = buffer + match[2].rm_so;
+    brook_config_set_key(&config, key, match[1].rm_eo - match[1].rm_so, value, match[2].rm_eo - match[2].rm_so);
+  }
+
+  return BROOK_OK;
+}
+
+int brook_config_set_key(brook_config_t *conf, char *key, size_t key_size, char *value, int value_size) {
+
+  // Set all possible keys defined in config file
+  const char *port = "port";
+  const char *workers = "workers";
+
+  char *value_end = value + value_size;
+
+  // Wil set the value fo each value of struct
+  if (strlen(port) == key_size && strncmp(key, port, key_size) == 0) {
+    conf->port = strtol(value, &value_end, 10);
+  } else if (strlen(workers) == key_size && strncmp(key, workers, key_size) == 0) {
+    conf->workers = strtol(value, &value_end, 10);
   }
 
   return BROOK_OK;

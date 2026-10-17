@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 
 #include <regex.h>
+#include <stddef.h>
 
 // Static variables define to help the developer
 #define BROOK_OK 0
