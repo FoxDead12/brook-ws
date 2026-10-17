@@ -30,11 +30,17 @@ int brook_config(const char *config_file_path) {
     return BROOK_ERROR;
   }
 
-  while (1) {
+  int keep_reading = 1;
+  while (keep_reading) {
 
     // Read a intere line of file
     int b = brook_config_file_read_line(file_fd, buffer, sizeof(buffer));
+    if (b == BROOK_ERROR) {
+      return BROOK_ERROR;
+    }
+
     if (b == 0) {
+      keep_reading = 0;
       continue;
     }
 
@@ -44,11 +50,13 @@ int brook_config(const char *config_file_path) {
       return BROOK_ERROR;
     }
 
-    printf("read %d: %.*s\n", b, b, buffer);
-
+    // Set in conf struct the initial values
     char *key = buffer + match[1].rm_so;
     char *value = buffer + match[2].rm_so;
-    brook_config_set_key(&config, key, match[1].rm_eo - match[1].rm_so, value, match[2].rm_eo - match[2].rm_so);
+    if (brook_config_set_key(&config, key, match[1].rm_eo - match[1].rm_so, value, match[2].rm_eo - match[2].rm_so) == BROOK_ERROR) {
+      fprintf(stderr, "invalid line in conf file key don't exist: %s\n", buffer);
+      return BROOK_ERROR;
+    }
   }
 
   return BROOK_OK;
@@ -67,6 +75,8 @@ int brook_config_set_key(brook_config_t *conf, char *key, size_t key_size, char 
     conf->port = strtol(value, &value_end, 10);
   } else if (strlen(workers) == key_size && strncmp(key, workers, key_size) == 0) {
     conf->workers = strtol(value, &value_end, 10);
+  } else {
+    return BROOK_ERROR;
   }
 
   return BROOK_OK;
@@ -92,7 +102,7 @@ int brook_config_file_read_line(int fd, char *buffer, int buffer_size) {
 
     // Will try again
     if (b == 0) {
-      continue;
+      break;
     }
 
     // Ignore end of lines
