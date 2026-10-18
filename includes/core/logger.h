@@ -12,6 +12,7 @@ typedef struct {
 
 typedef enum {
   L_DEBUG,
+  L_VERBOSE,
   L_INFO,
   L_WARN,
   L_ERROR
@@ -21,6 +22,8 @@ static inline const char *brook_logger_type_name(brook_logger_enum type) {
   switch (type) {
   case L_DEBUG:
     return "DEBUG";
+  case L_VERBOSE:
+    return "VERBOSE";
   case L_INFO:
     return "INFO";
   case L_WARN:

@@ -1,10 +1,13 @@
-#include "core/config.h"
+#include "core/globals.h"
 #include "core/logger.h"
 #include "core/process.h"
+#include "core/socket.h"
 #include "core/types.h"
+#include <errno.h>
 
-brook_logger_t logger;
 brook_config_t conf;
+brook_logger_t logger;
+brook_process_t process;
 
 /*
  * Here will start the brook websocket server
@@ -21,6 +24,16 @@ int main(void) {
   if (brook_logger(&logger) == BROOK_ERROR) {
     return BROOK_ERROR;
   }
+
+  // Initialize server
+  process.socket_fd = brook_socket(conf.port);
+  if (process.socket_fd == -1) {
+    brook_log(&logger, L_ERROR, "Error opening socket: %s\n", errno);
+    return BROOK_ERROR;
+  }
+
+  // TODO: for now is dev only one process
+  brook_process();
 
   return BROOK_OK;
 }

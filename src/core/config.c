@@ -1,5 +1,4 @@
 #include "core/config.h"
-
 #include <fcntl.h>
 #include <regex.h>
 #include <stdio.h>
