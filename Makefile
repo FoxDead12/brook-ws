@@ -13,11 +13,16 @@ OBJ_DIR = $(BUILD_DIR)/obj
 CFLAGS = -I$(INC_DIR) -Wall -Wextra -O2 -Wall -W -pedantic -Wundef -Wshadow -Wpointer-arith -Wbad-function-cast -Wcast-qual -Wcast-align -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wmissing-noreturn -Wredundant-decls -Wnested-externs -Winline -Wlong-long
 LDFLAGS = -lcjson -lbeanstalkclient -lhiredis
 
+# Extra flags passed by `make debug` (empty on a normal build)
+CFLAGS += $(EXTRA_CFLAGS)
+
 # 3. Ajustes específicos por OS
 ifeq ($(UNAME_S), Darwin)
     HOMEBREW_PREFIX = /opt/homebrew
     CFLAGS += -I$(HOMEBREW_PREFIX)/include
     LDFLAGS += -L$(HOMEBREW_PREFIX)/lib
+    # macOS is the dev machine: debug logs always enabled
+    CFLAGS += -DBROOK_DEBUG
 else
     CFLAGS += -I/usr/local/include
     LDFLAGS += -L/usr/local/lib
@@ -31,6 +36,11 @@ OBJ = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRC))
 # 5. Regras de Build
 all: $(TARGET)
 
+# Debug build in its own directory, so objects with and without
+# BROOK_DEBUG are never mixed: binary at build-debug/brook
+debug:
+	$(MAKE) BUILD_DIR=build-debug EXTRA_CFLAGS="-DBROOK_DEBUG -g -O0"
+
 # Linkagem final
 $(TARGET): $(OBJ)
 	@mkdir -p $(BUILD_DIR)
@@ -40,7 +50,10 @@ $(TARGET): $(OBJ)
 # Compilação dos objetos (cria subpastas se necessário)
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+# Dependências dos headers geradas pelo compilador (.d)
+-include $(OBJ:.o=.d)
 
 # 6. Instalação
 PREFIX = /usr/local
@@ -53,9 +66,9 @@ install: $(TARGET)
 
 clean:
 	@echo "A limpar ficheiros temporários..."
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) build-debug
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/$(TARGET)
 
-.PHONY: all clean install uninstall
+.PHONY: all debug clean install uninstall

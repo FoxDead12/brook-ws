@@ -37,4 +37,15 @@ static inline const char *brook_logger_type_name(brook_logger_enum type) {
 int brook_logger(brook_logger_t *logger);
 int brook_log(brook_logger_t *logger, brook_logger_enum type, const char *fmt, ...);
 
+/*
+ * Debug logs only exist when compiled with -DBROOK_DEBUG (make debug),
+ * otherwise the call (and its arguments) is removed by the preprocessor.
+ * Needs the global `logger` in scope (core/globals.h).
+ */
+#ifdef BROOK_DEBUG
+#define brook_debug(...) brook_log(&logger, L_DEBUG, __VA_ARGS__)
+#else
+#define brook_debug(...) ((void)0)
+#endif
+
 #endif

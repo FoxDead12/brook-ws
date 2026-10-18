@@ -1,10 +1,12 @@
 #include "core/socket.h"
+#include "core/types.h"
 
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <signal.h>
 #include <stdio.h>
+#include <sys/_types/_socklen_t.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -70,6 +72,18 @@ int brook_socket(int port) {
   }
 
   return socket_fd;
+}
+
+/*
+ * Method to socket accept TCP connections
+ */
+int brook_socket_accept(int fd, struct sockaddr *address, socklen_t *len) {
+  int cfd = accept(fd, address, len);
+  if (cfd <= 0) {
+    return BROOK_DONE;
+  } else {
+    return cfd;
+  }
 }
 
 /*
