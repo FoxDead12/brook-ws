@@ -6,7 +6,6 @@
 #include "core/types.h"
 #include <netinet/in.h>
 #include <stdio.h>
-#include <sys/_types/_socklen_t.h>
 #include <unistd.h>
 
 /*

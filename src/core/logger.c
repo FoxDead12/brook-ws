@@ -1,6 +1,5 @@
 #include "core/logger.h"
 
-#include <_stdio.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
