@@ -2,6 +2,7 @@
 #define BROOK_PROCESS_H
 
 #include "core/connection.h"
+#include "core/pool.h"
 #include <limits.h>
 #include <netinet/tcp.h>
 #include <poll.h>
@@ -19,11 +20,14 @@ typedef struct {
 typedef struct {
   int pid;
   int socket_fd;
+
+  // Sockets active in process
   struct pollfd fds[POLL_FDS_MAX];
   brook_handler_t handlers[POLL_FDS_MAX];
   brook_connection_t conns[POLL_FDS_MAX];
   int nfds;
 
+  brook_pool_t *pool;
 } brook_process_t;
 
 int brook_process(void);
