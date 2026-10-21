@@ -40,8 +40,7 @@ int brook_pool_init(brook_pool_t **pool_out) {
     pool->free->next = current;
 
     // Log the buffer
-    ptrdiff_t start = pool->free->data - pool->data;
-    brook_debug("pool buffer base=%p size=%d start=%td end=%td\n", (void *)pool->free->data, pool->free->size, start, start + pool->free->size);
+    brook_debug("pool buffer base=%p size=%d start=%td end=%td\n", (void *)pool->free->data, pool->free->size, pool->free->data - pool->data, pool->free->data - pool->data + pool->free->size - 1);
   }
 
   *pool_out = pool;
