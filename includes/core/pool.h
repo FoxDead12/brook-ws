@@ -13,9 +13,10 @@ typedef struct brook_buffer_s {
 
 typedef struct brook_pool_s {
   int size;
-  unsigned char *data;       // the memory allocation
-  brook_buffer_t *free;      // the free buffers
-  struct brook_pool_s *next; // the next pool if exist
+  unsigned char *data;  // the memory allocation
+  brook_buffer_t *free; // the free buffers
 } brook_pool_t;
+
+int brook_pool_init(brook_pool_t **pool_out);
 
 #endif

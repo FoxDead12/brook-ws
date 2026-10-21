@@ -3,6 +3,7 @@
 #include "core/connection.h"
 #include "core/globals.h"
 #include "core/logger.h"
+#include "core/pool.h"
 #include "core/types.h"
 #include <errno.h>
 #include <stdio.h>
@@ -25,6 +26,8 @@ int brook_process(void) {
   process.handlers[0] = (brook_handler_t){.on_read = brook_connection_accept, .on_write = NULL, .on_error = NULL, .ctx = NULL};
   process.nfds = 1;
   brook_debug("listening on fd=%d pid=%d\n", process.socket_fd, process.pid);
+
+  brook_pool_init(&process.pool);
 
   // Start the event loop of process
   while (1) {
