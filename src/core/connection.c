@@ -35,9 +35,13 @@ void brook_connection_accept(void *ctx) {
   // Add the new connection in process data
   int idx = process.nfds; // make this because is a counter but arrays are lower starting from 0
   process.fds[idx] = (struct pollfd){.fd = fd, .events = POLLIN, .revents = 0};
-  process.conns[idx] = (brook_connection_t){.fd = fd, .port = ntohs(address.sin_port)};
-  inet_ntop(AF_INET, &address.sin_addr, process.conns[idx].ip, INET_ADDRSTRLEN);
   process.handlers[idx] = (brook_handler_t){.on_read = brook_connection_read, .on_write = NULL, .on_error = NULL, .ctx = &process.conns[idx]};
+  process.conns[idx] = (brook_connection_t){
+      .fd = fd,
+      .port = ntohs(address.sin_port),
+      .buffers = NULL,
+  };
+  inet_ntop(AF_INET, &address.sin_addr, process.conns[idx].ip, INET_ADDRSTRLEN);
   process.nfds++;
 
   brook_debug("new connection fd=%d slot=%d from %s:%d nfds=%d\n", fd, idx, process.conns[idx].ip, process.conns[idx].port, process.nfds);

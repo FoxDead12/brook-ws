@@ -1,6 +1,7 @@
 #ifndef BROOK_CONNECTION_H
 #define BROOK_CONNECTION_H
 
+#include "core/pool.h"
 #include "core/types.h"
 #include <arpa/inet.h>
 
@@ -8,6 +9,7 @@ typedef struct {
   int fd;
   char ip[INET_ADDRSTRLEN];
   int port;
+  brook_buffer_t *buffers;
 } brook_connection_t;
 
 void brook_connection_accept(void *ctx);
