@@ -88,7 +88,7 @@ int brook_process(void) {
   brook_debug("listening on fd=%d pid=%d\n", process.socket_fd, process.pid);
 
   // Initialize the pool in memory
-  if (brook_pool_init(&process.pool) == BROOK_ERROR) {
+  if (brook_pool_init_head(&process.pool_head) == BROOK_ERROR) {
     return BROOK_ERROR;
   }
 
