@@ -27,7 +27,7 @@ typedef struct {
   brook_connection_t conns[POLL_FDS_MAX];
   int nfds;
 
-  brook_pool_t *pool;
+  brook_pool_t *head;
 } brook_process_t;
 
 int brook_process(void);

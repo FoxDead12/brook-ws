@@ -79,12 +79,15 @@ static void brook_process_loop(void) {
  * Method to start a process worker of a brook-ws
  */
 int brook_process(void) {
+
   process.pid = getpid();
   brook_log(&logger, L_INFO, "Process will execute the initial setup\n");
 
+  // Regist the server socket
   brook_process_register_listener();
   brook_debug("listening on fd=%d pid=%d\n", process.socket_fd, process.pid);
 
+  // Initialize the pool in memory
   if (brook_pool_init(&process.pool) == BROOK_ERROR) {
     return BROOK_ERROR;
   }

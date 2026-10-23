@@ -5,9 +5,9 @@
 #include "core/types.h"
 #include <errno.h>
 
-brook_config_t conf;
-brook_logger_t logger;
-brook_process_t process;
+brook_config_t conf = {0};
+brook_logger_t logger = {0};
+brook_process_t process = {0};
 
 /*
  * Here will start the brook websocket server
