@@ -3,15 +3,43 @@
 #include "core/config.h"
 #include "core/globals.h"
 #include "core/logger.h"
+#include "core/pool.h"
 #include "core/process.h"
 #include "core/socket.h"
 #include "core/types.h"
+#include <errno.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/_types/_ssize_t.h>
 #include <sys/poll.h>
 #include <unistd.h>
+
+static const brook_protocol_t *default_protocol = NULL;
+
+/*
+ * Only for the start of worker
+ */
+int brook_connection_set_default_protocol(const brook_protocol_t *protocol) {
+  default_protocol = protocol;
+  return BROOK_OK;
+}
+
+/*
+ * Method to change the set protocol of connection
+ */
+int brook_connection_set_protocol(brook_connection_t *con, brook_protocol_t *protocol) {
+  if (protocol == NULL) {
+    return BROOK_ERROR;
+  }
+
+  // Let the old protocol release its state (also clears proto_ctx)
+  if (con->protocol != NULL && con->protocol->on_close != NULL) {
+    con->protocol->on_close(con);
+  }
+
+  con->protocol = protocol;
+  return BROOK_OK;
+}
 
 /*
  * Method used when server receive a new TCP connection
@@ -46,7 +74,7 @@ void brook_connection_accept(void *ctx) {
       .fd_idx = idx,
       .port = ntohs(address.sin_port),
       .buffers = NULL,
-  };
+      .protocol = default_protocol};
   inet_ntop(AF_INET, &address.sin_addr, process.conns[idx].ip, INET_ADDRSTRLEN);
   process.nfds++;
 
@@ -98,9 +126,15 @@ void brook_connection_read(void *ctx) {
 
   // Will set the params to read function
   unsigned char *start = buffer->data + buffer->len;
-  ssize_t b = read(con->fd, start, buffer->free);
 
-  printf("buffer: %s\n", buffer->data);
+  ssize_t b = read(con->fd, start, buffer->free);
+  if (b == -1) {
+    brook_log(&logger, L_ERROR, "Can't read from connection fd=%d: %s\n", con->fd, strerror(errno));
+    brook_connection_destroy(ctx);
+  } else if (b == 0) {
+    brook_connection_destroy(ctx);
+    return;
+  }
 
   return;
 }

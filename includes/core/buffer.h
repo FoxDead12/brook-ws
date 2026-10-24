@@ -10,4 +10,7 @@ typedef struct brook_buffer_s {
   int in_use;
 } brook_buffer_t;
 
+brook_buffer_t *brook_buffer_get_free(brook_buffer_t **head);
+int brook_buffer_destroy(brook_buffer_t *head);
+
 #endif

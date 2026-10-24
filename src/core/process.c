@@ -46,7 +46,7 @@ static void brook_process_dispatch(int slot) {
     handler->on_read(handler->ctx);
   }
 
-  if ((events & POLLIN) && handler->on_write) {
+  if ((events & POLLOUT) && handler->on_write) {
     handler->on_write(handler->ctx);
   }
 }
