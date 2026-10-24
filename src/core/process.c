@@ -37,10 +37,10 @@ static void brook_process_dispatch(int slot) {
 
   brook_debug("event slot=%d fd=%d revents=0x%x\n", slot, process.fds[slot].fd, events);
 
-  // if ((events & (POLLERR | POLLHUP | POLLNVAL)) && handler->on_error) {
-  //   handler->on_error(handler->ctx);
-  //   return;
-  // }
+  if ((events & (POLLERR | POLLHUP | POLLNVAL)) && handler->on_error) {
+    handler->on_error(handler->ctx);
+    return;
+  }
 
   if ((events & POLLIN) && handler->on_read) {
     handler->on_read(handler->ctx);
