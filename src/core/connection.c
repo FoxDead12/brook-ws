@@ -3,8 +3,8 @@
 #include "core/config.h"
 #include "core/globals.h"
 #include "core/logger.h"
+#include "core/poll.h"
 #include "core/pool.h"
-#include "core/process.h"
 #include "core/socket.h"
 #include "core/types.h"
 #include <errno.h>
@@ -14,12 +14,12 @@
 #include <sys/poll.h>
 #include <unistd.h>
 
-static const brook_protocol_t *default_protocol = NULL;
+static brook_protocol_t *default_protocol = NULL;
 
 /*
  * Only for the start of worker
  */
-int brook_connection_set_default_protocol(const brook_protocol_t *protocol) {
+int brook_connection_set_default_protocol(brook_protocol_t *protocol) {
   default_protocol = protocol;
   return BROOK_OK;
 }
@@ -51,37 +51,36 @@ void brook_connection_accept(void *ctx) {
   struct sockaddr_in address;
   socklen_t len = sizeof(address);
 
-  // Protect a process accept more connections than can handle
-  if (process.nfds >= POLL_FDS_MAX) {
+  int idx = brook_poll_next_slot();
+  if (idx == -1) {
+    brook_debug("accept skipped, poll is full\n");
     // TODO: i can disable the event of read of server socket to disable events of accept event
-    brook_debug("accept skipped, process is full nfds=%d max=%d\n", process.nfds, POLL_FDS_MAX);
     return;
   }
 
-  // Accept connection
   fd = brook_socket_accept(process.socket_fd, (struct sockaddr *)&address, &len);
   if (fd == BROOK_DONE) {
     brook_debug("accept returned nothing (another worker took it or error)\n");
     return;
   }
 
-  // Add the new connection in process data
-  int idx = process.nfds; // make this because is a counter but arrays are lower starting from 0
-  process.fds[idx] = (struct pollfd){.fd = fd, .events = POLLIN, .revents = 0};
-  process.handlers[idx] = (brook_handler_t){.on_read = brook_connection_read, .on_write = NULL, .on_error = brook_connection_destroy, .ctx = &process.conns[idx]};
+  brook_poll_add(fd, POLLIN, (brook_handler_t){.on_read = brook_connection_read, .on_write = NULL, .on_error = brook_connection_destroy, .ctx = &process.conns[idx]});
   process.conns[idx] = (brook_connection_t){
       .fd = fd,
-      .fd_idx = idx,
+      .slot = idx,
       .port = ntohs(address.sin_port),
       .buffers = NULL,
-      .protocol = default_protocol};
+      .protocol = default_protocol,
+  };
   inet_ntop(AF_INET, &address.sin_addr, process.conns[idx].ip, INET_ADDRSTRLEN);
-  process.nfds++;
 
-  brook_debug("new connection fd=%d slot=%d from %s:%d nfds=%d\n", fd, idx, process.conns[idx].ip, process.conns[idx].port, process.nfds);
+  brook_debug("new connection fd=%d slot=%d from %s:%d\n", fd, idx, process.conns[idx].ip, process.conns[idx].port);
   return;
 }
 
+/*
+ * Method used to destroy/remove a connection
+ */
 void brook_connection_destroy(void *ctx) {
 
   brook_connection_t *con = (brook_connection_t *)ctx;
@@ -92,26 +91,20 @@ void brook_connection_destroy(void *ctx) {
   // Close socket
   close(con->fd);
 
-  int idx = con->fd_idx;
-  int idx_last = process.nfds - 1;
-  int socket = con->fd;
-
-  // Now need change the position in arrays if this connection wasant the last
-  if (idx != idx_last) {
-    // Need change the last connection to this point
-    process.fds[idx] = process.fds[idx_last];
-    process.handlers[idx] = process.handlers[idx_last];
-    process.conns[idx] = process.conns[idx_last];
-    brook_debug("connection destroy fd=%d slot=%d, moved last connection fd=%d from slot=%d to slot=%d\n", socket, idx, process.fds[idx].fd, idx_last, idx);
+  int slot = con->slot;
+  int fd = con->fd;
+  int last = brook_poll_remove(slot);
+  if (last != slot) {
+    process.conns[slot] = process.conns[last];
+    process.conns[slot].slot = slot;
+    brook_poll_set_ctx(slot, &process.conns[slot]);
+    brook_debug("connection destroy fd=%d slot=%d, moved last connection fd=%d from slot=%d to slot=%d\n", fd, slot, process.conns[slot].fd, last, slot);
   } else {
-    brook_debug("connection destroy fd=%d slot=%d was the last, no move\n", con->fd, idx);
+    brook_debug("connection destroy fd=%d slot=%d was the last, no move\n", fd, slot);
   }
 
-  memset(&process.fds[idx_last], 0, sizeof(struct pollfd));
-  memset(&process.handlers[idx_last], 0, sizeof(brook_handler_t));
-  memset(&process.conns[idx_last], 0, sizeof(brook_connection_t));
-
-  process.nfds--;
+  memset(&process.conns[last], 0, sizeof(brook_connection_t));
+  return;
 }
 
 /*
@@ -136,5 +129,6 @@ void brook_connection_read(void *ctx) {
     return;
   }
 
+  printf("buffer: %s\n", buffer->data);
   return;
 }
