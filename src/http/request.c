@@ -2,6 +2,7 @@
 #include "core/buffer.h"
 #include "core/connection.h"
 #include "core/globals.h"
+#include "core/logger.h"
 #include "core/pool.h"
 #include "core/str.h"
 #include "core/types.h"
@@ -292,28 +293,51 @@ int brook_http_parse_params(brook_http_request_t *req, brook_buffer_t *buffer, u
 
   assert(parser->state == s_req_params);
 
+  // first call enter here
   if (parser->match_index == 0) {
     parser->sub_state = 0;
     req->params.buffer = buffer;
     req->params.start = (unsigned short)(at - buffer->data);
   }
 
-  if (ch == ' ') {
+  // now need valida if i get in end of something
+  if (ch == '=') {
+
+    if (parser->sub_state != 1) {
+      brook_debug("http params error: '=' at position %u must follow a key (empty key or second '=')\n", parser->match_index);
+      return BROOK_ERROR;
+    }
+    parser->sub_state = 2;
+
+  } else if (ch == '&') {
+
+    if (parser->sub_state != 3) {
+      brook_debug("http params error: '&' at position %u must follow a key=value pair (empty pair or key without '=')\n", parser->match_index);
+      return BROOK_ERROR;
+    }
+    parser->sub_state = 0;
+
+  } else if (ch == ' ') {
+
+    if (parser->sub_state != 3) {
+      brook_debug("http params error: query ended at position %u without a complete key=value pair\n", parser->match_index);
+      return BROOK_ERROR;
+    }
     req->params.len = parser->match_index;
     parser->state = s_req_minor;
     parser->match_index = 0;
     return BROOK_OK;
+
+  } else if (parser->sub_state == 0) {
+    parser->sub_state = 1;
+  } else if (parser->sub_state == 2) {
+    parser->sub_state = 3;
   }
 
   if (!IS_URL_CHAR(ch)) {
     brook_debug("http url error: invalid char 0x%02x at position %u of the url\n", ch, parser->match_index);
     return BROOK_ERROR;
   }
-
-  // we are parsing a key
-  if (parser->sub_state == 0) {
-  }
-
   parser->match_index++;
 
   return BROOK_OK;
