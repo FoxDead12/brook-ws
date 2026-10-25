@@ -293,6 +293,7 @@ int brook_http_parse_params(brook_http_request_t *req, brook_buffer_t *buffer, u
   assert(parser->state == s_req_params);
 
   if (parser->match_index == 0) {
+    parser->sub_state = 0;
     req->params.buffer = buffer;
     req->params.start = (unsigned short)(at - buffer->data);
   }
@@ -307,6 +308,10 @@ int brook_http_parse_params(brook_http_request_t *req, brook_buffer_t *buffer, u
   if (!IS_URL_CHAR(ch)) {
     brook_debug("http url error: invalid char 0x%02x at position %u of the url\n", ch, parser->match_index);
     return BROOK_ERROR;
+  }
+
+  // we are parsing a key
+  if (parser->sub_state == 0) {
   }
 
   parser->match_index++;

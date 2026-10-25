@@ -32,6 +32,7 @@ typedef enum {
 typedef struct {
   brook_http_parser_state_e state;
   unsigned int match_index;
+  unsigned int sub_state;
 
   /*
   brook_http_state_e state;
