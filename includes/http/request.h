@@ -1,6 +1,8 @@
 #ifndef BROOK_HTTP_REQUEST_H
 #define BROOK_HTTP_REQUEST_H
 
+#include "core/connection.h"
+
 #define T(v) (1 << ((v) & 7))
 #define BIT_AT(a, i) (!!((unsigned int)(a)[(unsigned int)(i) >> 3] & (1 << ((unsigned int)(i) & 7))))
 #define IS_URL_CHAR(c) (BIT_AT(normal_url_char, (unsigned char)c))
@@ -48,5 +50,9 @@ typedef struct {
 
   */
 } brook_http_request_t;
+
+void brook_http_open(brook_connection_t *con);
+void brook_http_on_close(brook_connection_t *con);
+void brook_http_on_data(brook_connection_t *con);
 
 #endif

@@ -7,6 +7,7 @@
 #include "core/pool.h"
 #include "core/socket.h"
 #include "core/types.h"
+#include <assert.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -15,31 +16,6 @@
 #include <unistd.h>
 
 static brook_protocol_t *default_protocol = NULL;
-
-/*
- * Only for the start of worker
- */
-int brook_connection_set_default_protocol(brook_protocol_t *protocol) {
-  default_protocol = protocol;
-  return BROOK_OK;
-}
-
-/*
- * Method to change the set protocol of connection
- */
-int brook_connection_set_protocol(brook_connection_t *con, brook_protocol_t *protocol) {
-  if (protocol == NULL) {
-    return BROOK_ERROR;
-  }
-
-  // Let the old protocol release its state (also clears proto_ctx)
-  if (con->protocol != NULL && con->protocol->on_close != NULL) {
-    con->protocol->on_close(con);
-  }
-
-  con->protocol = protocol;
-  return BROOK_OK;
-}
 
 /*
  * Method used when server receive a new TCP connection
@@ -64,17 +40,40 @@ void brook_connection_accept(void *ctx) {
     return;
   }
 
-  brook_poll_add(fd, POLLIN, (brook_handler_t){.on_read = brook_connection_read, .on_write = NULL, .on_error = brook_connection_destroy, .ctx = &process.conns[idx]});
-  process.conns[idx] = (brook_connection_t){
+  // Fill the connection first, so it is complete when the fd enters the poll
+  brook_connection_t *con = &process.conns[idx];
+  *con = (brook_connection_t){
       .fd = fd,
       .slot = idx,
       .port = ntohs(address.sin_port),
       .buffers = NULL,
+      .protocol_ctx = NULL,
       .protocol = default_protocol,
   };
-  inet_ntop(AF_INET, &address.sin_addr, process.conns[idx].ip, INET_ADDRSTRLEN);
+  inet_ntop(AF_INET, &address.sin_addr, con->ip, INET_ADDRSTRLEN);
 
-  brook_debug("new connection fd=%d slot=%d from %s:%d\n", fd, idx, process.conns[idx].ip, process.conns[idx].port);
+  // Memory where the protocols write their own state
+  if (brook_buffer_get_free(&con->protocol_ctx) == NULL) {
+    brook_log(&logger, L_ERROR, "Can't allocate protocol context for fd=%d\n", fd);
+    memset(con, 0, sizeof(brook_connection_t));
+    close(fd);
+    return;
+  }
+
+  if (brook_poll_add(fd, POLLIN, (brook_handler_t){.on_read = brook_connection_read, .on_write = NULL, .on_error = brook_connection_destroy, .ctx = con}) == BROOK_ERROR) {
+    brook_buffer_destroy(con->protocol_ctx);
+    memset(con, 0, sizeof(brook_connection_t));
+    close(fd);
+    return;
+  }
+
+  brook_debug("new connection fd=%d slot=%d from %s:%d\n", fd, idx, con->ip, con->port);
+
+  // Last: the protocol may destroy the connection, so con can't be used after this
+  if (con->protocol != NULL && con->protocol->on_open != NULL) {
+    con->protocol->on_open(con);
+  }
+
   return;
 }
 
@@ -85,14 +84,21 @@ void brook_connection_destroy(void *ctx) {
 
   brook_connection_t *con = (brook_connection_t *)ctx;
 
-  // Free list of buffers in connection
-  brook_buffer_destroy(con->buffers);
-
-  // Close socket
-  close(con->fd);
-
+  // After the slots are rearranged con may point to another connection
   int slot = con->slot;
   int fd = con->fd;
+
+  // 1. Protocol cleans its state while protocol_ctx is still valid
+  if (con->protocol != NULL && con->protocol->on_close != NULL) {
+    con->protocol->on_close(con);
+  }
+
+  // 2. Release the resources of the connection
+  brook_buffer_destroy(con->buffers);
+  brook_buffer_destroy(con->protocol_ctx);
+  close(fd);
+
+  // 3. Remove from poll and keep conns[] aligned with it
   int last = brook_poll_remove(slot);
   if (last != slot) {
     process.conns[slot] = process.conns[last];
@@ -104,7 +110,6 @@ void brook_connection_destroy(void *ctx) {
   }
 
   memset(&process.conns[last], 0, sizeof(brook_connection_t));
-  return;
 }
 
 /*
@@ -116,19 +121,57 @@ void brook_connection_read(void *ctx) {
 
   // Get a buffer to store read data
   brook_buffer_t *buffer = brook_buffer_get_free(&con->buffers);
+  if (buffer == NULL) {
+    return;
+  }
 
   // Will set the params to read function
   unsigned char *start = buffer->data + buffer->len;
-
   ssize_t b = read(con->fd, start, buffer->free);
   if (b == -1) {
     brook_log(&logger, L_ERROR, "Can't read from connection fd=%d: %s\n", con->fd, strerror(errno));
     brook_connection_destroy(ctx);
+    return;
   } else if (b == 0) {
     brook_connection_destroy(ctx);
     return;
   }
 
+  buffer->free -= b;
+  buffer->len += b;
   printf("buffer: %s\n", buffer->data);
+
+  assert(con->protocol != NULL && con->protocol->on_data != NULL);
+  con->protocol->on_data(con);
+
   return;
+}
+
+/*
+ * Only for the start of worker
+ */
+int brook_connection_set_default_protocol(brook_protocol_t *protocol) {
+  default_protocol = protocol;
+  return BROOK_OK;
+}
+
+/*
+ * Method to change the set protocol of connection
+ */
+int brook_connection_set_protocol(brook_connection_t *con, brook_protocol_t *protocol) {
+  if (protocol == NULL) {
+    return BROOK_ERROR;
+  }
+
+  if (con->protocol != NULL && con->protocol->on_close != NULL) {
+    con->protocol->on_close(con);
+  }
+
+  con->protocol = protocol;
+
+  if (con->protocol != NULL && con->protocol->on_open != NULL) {
+    con->protocol->on_open(con);
+  }
+
+  return BROOK_OK;
 }

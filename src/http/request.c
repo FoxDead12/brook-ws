@@ -1,4 +1,5 @@
 #include "http/request.h"
+#include "core/connection.h"
 #include "core/types.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -79,6 +80,11 @@ static const uint8_t url_chars[32] = {
     1 | 2 | 4 | 8 | 16 | 32 | 64 | 0,
 };
 
-int brook_http_request_part() {
-  return BROOK_OK;
+void brook_http_open(brook_connection_t *con) {
+}
+
+void brook_http_on_close(brook_connection_t *con) {
+}
+
+void brook_http_on_data(brook_connection_t *con) {
 }

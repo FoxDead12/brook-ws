@@ -1,6 +1,7 @@
 #ifndef BROOK_CONNECTION_H
 #define BROOK_CONNECTION_H
 
+#include "core/buffer.h"
 #include "core/pool.h"
 #include "core/types.h"
 #include <arpa/inet.h>
@@ -20,6 +21,7 @@ struct brook_connection_s {
   char ip[INET_ADDRSTRLEN];
   brook_buffer_t *buffers;
   brook_protocol_t *protocol;
+  brook_buffer_t *protocol_ctx; // the protocols will write here
 };
 
 int brook_connection_set_default_protocol(brook_protocol_t *protocol);
