@@ -46,10 +46,6 @@ int brook_logger(brook_logger_t *logger) {
     return BROOK_ERROR;
   }
 
-  if (logger->fd > 0) {
-    close(fd);
-  }
-
   logger->fd = fd;
 
   return BROOK_OK;
@@ -69,6 +65,7 @@ int brook_log(brook_logger_t *logger, brook_logger_enum type, const char *fmt, .
 
   // We regenerate new file if the current day of log change
   if (time_info->tm_mday != logger->current_day) {
+    close(logger->fd);
     brook_logger(logger);
   }
 
