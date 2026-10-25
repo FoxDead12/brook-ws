@@ -135,8 +135,8 @@ void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigne
   // Parse the received data, TODO: handle error
   brook_http_parse(req, buffer, b, len);
 
-  printf("method: %s\n", methods[req->method]);
   brook_str_print(&req->url);
+  brook_str_print(&req->params);
 }
 
 /*
@@ -158,6 +158,7 @@ int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer, unsigned
       rc = brook_http_parse_url(req, buffer, &b[i]);
       break;
     case s_req_params:
+      rc = brook_http_parse_params(req, buffer, &b[i]);
       break;
     case s_req_minor:
       rc = brook_http_parse_minor(req, c);
@@ -275,6 +276,34 @@ int brook_http_parse_url(brook_http_request_t *req, brook_buffer_t *buffer, unsi
   }
 
   // Check if a valida URL char
+  if (!IS_URL_CHAR(ch)) {
+    brook_debug("http url error: invalid char 0x%02x at position %u of the url\n", ch, parser->match_index);
+    return BROOK_ERROR;
+  }
+
+  parser->match_index++;
+
+  return BROOK_OK;
+}
+
+int brook_http_parse_params(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at) {
+  brook_http_parser_t *parser = &req->parser;
+  unsigned char ch = *at;
+
+  assert(parser->state == s_req_params);
+
+  if (parser->match_index == 0) {
+    req->params.buffer = buffer;
+    req->params.start = (unsigned short)(at - buffer->data);
+  }
+
+  if (ch == ' ') {
+    req->params.len = parser->match_index;
+    parser->state = s_req_minor;
+    parser->match_index = 0;
+    return BROOK_OK;
+  }
+
   if (!IS_URL_CHAR(ch)) {
     brook_debug("http url error: invalid char 0x%02x at position %u of the url\n", ch, parser->match_index);
     return BROOK_ERROR;

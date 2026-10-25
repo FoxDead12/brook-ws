@@ -47,6 +47,7 @@ typedef struct {
 
   brook_http_method_e method;
   brook_str_t url;
+  brook_str_t params;
 
   /*
   brook_method_e method;
@@ -76,6 +77,7 @@ void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigne
 int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *b, size_t len);
 int brook_http_parse_method(brook_http_request_t *parser, unsigned char ch);
 int brook_http_parse_url(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at);
+int brook_http_parse_params(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at);
 int brook_http_parse_minor(brook_http_request_t *req, unsigned char ch);
 
 #endif
