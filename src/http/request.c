@@ -1,6 +1,9 @@
 #include "http/request.h"
 #include "core/buffer.h"
 #include "core/connection.h"
+#include "core/globals.h"
+#include "core/pool.h"
+#include "core/str.h"
 #include "core/types.h"
 #include <assert.h>
 #include <stddef.h>
@@ -96,7 +99,14 @@ static const char *methods[] = {
  * Method to initiate this http protocol in connection
  */
 void brook_http_open(brook_connection_t *con) {
-  brook_buffer_t *memory = con->protocol_ctx;
+
+  // Allocate a buffer to context of protocol
+  brook_buffer_t *memory = brook_buffer_get_free(&con->protocol_ctx);
+  if (memory == NULL) {
+    brook_log(&logger, L_ERROR, "Can't allocate http context for fd=%d\n", con->fd);
+    brook_connection_destroy(con);
+    return;
+  }
 
   // We need contain this check before compile
   _Static_assert(sizeof(brook_http_request_t) <= BROOK_POOL_BLOCK_SIZE, "request does not fit in a pool block");
@@ -111,27 +121,33 @@ void brook_http_open(brook_connection_t *con) {
  */
 void brook_http_on_close(brook_connection_t *con) {
   // brook_buffer_t *memory = con->protocol_ctx;
-  printf("entrei no close do http\n");
+  brook_buffer_destroy(con->protocol_ctx);
+  con->protocol_ctx = NULL;
 }
 
 /*
  * Method called each time connection read data
  */
-void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer) {
+void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len) {
   brook_buffer_t *memory = con->protocol_ctx;
   brook_http_request_t *req = (brook_http_request_t *)(void *)memory->data;
-  brook_http_parse(req, buffer);
+
+  // Parse the received data, TODO: handle error
+  brook_http_parse(req, buffer, b, len);
+
+  printf("method: %s\n", methods[req->method]);
+  brook_str_print(&req->url);
 }
 
 /*
  * Will iterate a buffer char by char to parse the http message
  */
-int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer) {
+int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *b, size_t len) {
   brook_http_parser_t *parser = &req->parser;
-  int rc;
 
-  for (int i = 0; i < buffer->len; i++) {
-    unsigned char c = buffer->data[i];
+  for (size_t i = 0; i < len; i++) {
+    unsigned char c = b[i];
+    int rc = 0;
 
     switch (parser->state) {
     case s_req_start:
@@ -139,15 +155,17 @@ int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer) {
       rc = brook_http_parse_method(req, c);
       break;
     case s_req_url:
+      rc = brook_http_parse_url(req, buffer, &b[i]);
       break;
     case s_req_params:
       break;
     case s_req_minor:
+      rc = brook_http_parse_minor(req, c);
       break;
     }
 
     if (rc == BROOK_ERROR) {
-      printf("ocorreu um erro no parse\n");
+      brook_debug("http parse error in state=%d match_index=%u at byte=%zu of %zu\n", (int)parser->state, parser->match_index, i, len);
       return BROOK_ERROR;
     }
   }
@@ -155,6 +173,9 @@ int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer) {
   return BROOK_OK;
 }
 
+/*
+ * Will read the method of request one char at a time, it ends when finds the space after the name
+ */
 int brook_http_parse_method(brook_http_request_t *req, unsigned char ch) {
   // Get the char from tokens chars image is 'G' will transform in 'g'
   unsigned char c = tokens[ch];
@@ -175,6 +196,7 @@ int brook_http_parse_method(brook_http_request_t *req, unsigned char ch) {
       req->method = DELETE;
       break;
     default:
+      brook_debug("http method error: invalid first byte 0x%02x\n", ch);
       return BROOK_ERROR;
     }
 
@@ -199,6 +221,7 @@ int brook_http_parse_method(brook_http_request_t *req, unsigned char ch) {
   // Check if we are in last character of name
   if (expected == '\0') {
     if (ch != ' ') {
+      brook_debug("http method error: %s must be followed by a space, got 0x%02x\n", methods[req->method], ch);
       return BROOK_ERROR;
     }
     parser->state = s_req_url;
@@ -210,11 +233,58 @@ int brook_http_parse_method(brook_http_request_t *req, unsigned char ch) {
   expected = tokens[expected];
 
   if (c != expected) {
-    printf("invalid method\n");
+    brook_debug("http method error: byte 0x%02x at position %d does not match %s (expected 0x%02x)\n", ch, match_index, methods[req->method], expected);
     return BROOK_ERROR;
   }
 
   parser->match_index++;
 
+  return BROOK_OK;
+}
+
+int brook_http_parse_url(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at) {
+  brook_http_parser_t *parser = &req->parser;
+  unsigned char ch = *at;
+
+  assert(parser->state == s_req_url);
+
+  // start of url
+  if (parser->match_index == 0 && ch != '/') {
+    brook_debug("http url error: url must start with '/', got 0x%02x\n", ch);
+    return BROOK_ERROR;
+  }
+
+  if (parser->match_index == 0) {
+    req->url.buffer = buffer;
+    req->url.start = (unsigned short)(at - buffer->data);
+  }
+
+  // end of url
+  if (ch == '?') {
+    req->url.len = req->parser.match_index;
+    parser->state = s_req_params;
+    parser->match_index = 0;
+    return BROOK_OK;
+  }
+
+  if (ch == ' ') {
+    req->url.len = req->parser.match_index;
+    parser->state = s_req_minor;
+    parser->match_index = 0;
+    return BROOK_OK;
+  }
+
+  // Check if a valida URL char
+  if (!IS_URL_CHAR(ch)) {
+    brook_debug("http url error: invalid char 0x%02x at position %u of the url\n", ch, parser->match_index);
+    return BROOK_ERROR;
+  }
+
+  parser->match_index++;
+
+  return BROOK_OK;
+}
+
+int brook_http_parse_minor(brook_http_request_t *req, unsigned char ch) {
   return BROOK_OK;
 }

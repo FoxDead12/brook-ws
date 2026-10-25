@@ -2,10 +2,11 @@
 #define BROOK_HTTP_REQUEST_H
 
 #include "core/connection.h"
+#include "core/str.h"
 
 #define T(v) (1 << ((v) & 7))
 #define BIT_AT(a, i) (!!((unsigned int)(a)[(unsigned int)(i) >> 3] & (1 << ((unsigned int)(i) & 7))))
-#define IS_URL_CHAR(c) (BIT_AT(normal_url_char, (unsigned char)c))
+#define IS_URL_CHAR(c) (BIT_AT(url_chars, (unsigned char)c))
 #define IS_NUM(c) ((c) >= '0' && (c) <= '9')
 #define IS_BASE64(C) ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c == '+') || (c == '/'))
 
@@ -45,6 +46,7 @@ typedef struct {
   brook_http_parser_t parser;
 
   brook_http_method_e method;
+  brook_str_t url;
 
   /*
   brook_method_e method;
@@ -69,9 +71,11 @@ typedef struct {
 
 void brook_http_open(brook_connection_t *con);
 void brook_http_on_close(brook_connection_t *con);
-void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer);
+void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len);
 
-int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer);
+int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *b, size_t len);
 int brook_http_parse_method(brook_http_request_t *parser, unsigned char ch);
+int brook_http_parse_url(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at);
+int brook_http_parse_minor(brook_http_request_t *req, unsigned char ch);
 
 #endif

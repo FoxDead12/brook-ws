@@ -3,7 +3,6 @@
 #include "core/logger.h"
 #include "core/pool.h"
 #include "core/types.h"
-#include <_stdio.h>
 #include <stdio.h>
 
 /*
@@ -51,6 +50,7 @@ int brook_buffer_destroy(brook_buffer_t *head) {
   while (buffer != NULL) {
     last = buffer;
     buffer = buffer->next;
+    last->next = NULL;
     brook_pool_free(process.pool_head, last);
   }
 

@@ -52,16 +52,7 @@ void brook_connection_accept(void *ctx) {
   };
   inet_ntop(AF_INET, &address.sin_addr, con->ip, INET_ADDRSTRLEN);
 
-  // Memory where the protocols write their own state
-  if (brook_buffer_get_free(&con->protocol_ctx) == NULL) {
-    brook_log(&logger, L_ERROR, "Can't allocate protocol context for fd=%d\n", fd);
-    memset(con, 0, sizeof(brook_connection_t));
-    close(fd);
-    return;
-  }
-
   if (brook_poll_add(fd, POLLIN, (brook_handler_t){.on_read = brook_connection_read, .on_write = NULL, .on_error = brook_connection_destroy, .ctx = con}) == BROOK_ERROR) {
-    brook_buffer_destroy(con->protocol_ctx);
     memset(con, 0, sizeof(brook_connection_t));
     close(fd);
     return;
@@ -88,14 +79,13 @@ void brook_connection_destroy(void *ctx) {
   int slot = con->slot;
   int fd = con->fd;
 
-  // 1. Protocol cleans its state while protocol_ctx is still valid
+  // Protocol cleans its state while protocol_ctx is still valid
   if (con->protocol != NULL && con->protocol->on_close != NULL) {
     con->protocol->on_close(con);
   }
 
-  // 2. Release the resources of the connection
+  // Release the resources of the connection
   brook_buffer_destroy(con->buffers);
-  brook_buffer_destroy(con->protocol_ctx);
   close(fd);
 
   // 3. Remove from poll and keep conns[] aligned with it
@@ -149,7 +139,7 @@ void brook_connection_read(void *ctx) {
 
   // Hand the data to the protocol, con can't be used after this because it may destroy the connection
   assert(con->protocol != NULL && con->protocol->on_data != NULL);
-  con->protocol->on_data(con, buffer);
+  con->protocol->on_data(con, buffer, start, bytes);
 }
 
 /*
