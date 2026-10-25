@@ -119,32 +119,37 @@ void brook_connection_read(void *ctx) {
 
   brook_connection_t *con = (brook_connection_t *)ctx;
 
-  // Get a buffer to store read data
+  // Get a buffer with free space to store the data
   brook_buffer_t *buffer = brook_buffer_get_free(&con->buffers);
   if (buffer == NULL) {
+    // Without this the POLLIN stays pending and poll returns again and again
+    brook_log(&logger, L_ERROR, "Can't get a buffer for connection fd=%d\n", con->fd);
+    brook_connection_destroy(con);
     return;
   }
 
-  // Will set the params to read function
+  // Read after the data already stored in the buffer
   unsigned char *start = buffer->data + buffer->len;
-  ssize_t b = read(con->fd, start, buffer->free);
-  if (b == -1) {
+  ssize_t bytes = read(con->fd, start, buffer->free);
+  if (bytes == -1) {
     brook_log(&logger, L_ERROR, "Can't read from connection fd=%d: %s\n", con->fd, strerror(errno));
-    brook_connection_destroy(ctx);
-    return;
-  } else if (b == 0) {
-    brook_connection_destroy(ctx);
+    brook_connection_destroy(con);
     return;
   }
 
-  buffer->free -= b;
-  buffer->len += b;
-  printf("buffer: %s\n", buffer->data);
+  // Peer closed the connection
+  if (bytes == 0) {
+    brook_connection_destroy(con);
+    return;
+  }
 
+  buffer->len += bytes;
+  buffer->free -= bytes;
+  brook_debug("read fd=%d bytes=%zd data=%.*s\n", con->fd, bytes, (int)bytes, start);
+
+  // Hand the data to the protocol, con can't be used after this because it may destroy the connection
   assert(con->protocol != NULL && con->protocol->on_data != NULL);
-  con->protocol->on_data(con);
-
-  return;
+  con->protocol->on_data(con, buffer);
 }
 
 /*

@@ -1,8 +1,12 @@
 #include "http/request.h"
+#include "core/buffer.h"
 #include "core/connection.h"
 #include "core/types.h"
+#include <assert.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 /* Tokens as defined by rfc 2616. Also lowercases them.
  *        token       = 1*<any CHAR except CTLs or separators>
@@ -80,11 +84,137 @@ static const uint8_t url_chars[32] = {
     1 | 2 | 4 | 8 | 16 | 32 | 64 | 0,
 };
 
+static const char *methods[] = {
+    [DELETE] = "DELETE",
+    [GET] = "GET",
+    [POST] = "POST",
+    [PUT] = "PUT",
+    [PATCH] = "PATCH",
+};
+
+/*
+ * Method to initiate this http protocol in connection
+ */
 void brook_http_open(brook_connection_t *con) {
+  brook_buffer_t *memory = con->protocol_ctx;
+
+  // We need contain this check before compile
+  _Static_assert(sizeof(brook_http_request_t) <= BROOK_POOL_BLOCK_SIZE, "request does not fit in a pool block");
+
+  // Define the struct in memory and clean the bytes
+  brook_http_request_t *req = (brook_http_request_t *)(void *)memory->data;
+  memset(req, 0, sizeof(*req));
 }
 
+/*
+ * Method called when connection change protocol or is closed
+ */
 void brook_http_on_close(brook_connection_t *con) {
+  // brook_buffer_t *memory = con->protocol_ctx;
+  printf("entrei no close do http\n");
 }
 
-void brook_http_on_data(brook_connection_t *con) {
+/*
+ * Method called each time connection read data
+ */
+void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer) {
+  brook_buffer_t *memory = con->protocol_ctx;
+  brook_http_request_t *req = (brook_http_request_t *)(void *)memory->data;
+  brook_http_parse(req, buffer);
+}
+
+/*
+ * Will iterate a buffer char by char to parse the http message
+ */
+int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer) {
+  brook_http_parser_t *parser = &req->parser;
+  int rc;
+
+  for (int i = 0; i < buffer->len; i++) {
+    unsigned char c = buffer->data[i];
+
+    switch (parser->state) {
+    case s_req_start:
+    case s_req_method:
+      rc = brook_http_parse_method(req, c);
+      break;
+    case s_req_url:
+      break;
+    case s_req_params:
+      break;
+    case s_req_minor:
+      break;
+    }
+
+    if (rc == BROOK_ERROR) {
+      printf("ocorreu um erro no parse\n");
+      return BROOK_ERROR;
+    }
+  }
+
+  return BROOK_OK;
+}
+
+int brook_http_parse_method(brook_http_request_t *req, unsigned char ch) {
+  // Get the char from tokens chars image is 'G' will transform in 'g'
+  unsigned char c = tokens[ch];
+  brook_http_parser_t *parser = &req->parser;
+
+  assert(parser->state == s_req_start || parser->state == s_req_method);
+
+  // First letter: P can be POST, PUT or PATCH, it is decided by the second letter
+  if (parser->state == s_req_start) {
+    switch (c) {
+    case 'g':
+      req->method = GET;
+      break;
+    case 'p':
+      req->method = POST;
+      break;
+    case 'd':
+      req->method = DELETE;
+      break;
+    default:
+      return BROOK_ERROR;
+    }
+
+    parser->state = s_req_method;
+    parser->match_index = 1;
+    return BROOK_OK;
+  }
+
+  int match_index = parser->match_index;
+
+  if (req->method == POST && match_index == 1) {
+    if (c == 'u') {
+      req->method = PUT;
+    } else if (c == 'a') {
+      req->method = PATCH;
+    }
+  }
+
+  // Get the name of method literal string
+  unsigned char expected = (unsigned char)methods[req->method][parser->match_index];
+
+  // Check if we are in last character of name
+  if (expected == '\0') {
+    if (ch != ' ') {
+      return BROOK_ERROR;
+    }
+    parser->state = s_req_url;
+    parser->match_index = 0;
+    return BROOK_OK;
+  }
+
+  // Transform with tokens
+  expected = tokens[expected];
+
+  if (c != expected) {
+    printf("invalid method\n");
+    return BROOK_ERROR;
+  }
+
+  parser->match_index++;
+
+  return BROOK_OK;
 }

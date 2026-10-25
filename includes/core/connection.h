@@ -10,7 +10,7 @@ typedef struct brook_connection_s brook_connection_t;
 
 typedef struct {
   void (*on_open)(brook_connection_t *con);
-  void (*on_data)(brook_connection_t *con);
+  void (*on_data)(brook_connection_t *con, brook_buffer_t *buffer);
   void (*on_close)(brook_connection_t *con);
 } brook_protocol_t;
 

@@ -17,7 +17,21 @@ typedef enum {
   PATCH
 } brook_http_method_e;
 
+typedef enum {
+
+  // States to parse first line of HTTP
+  s_req_start,
+  s_req_method,
+  s_req_url,
+  s_req_params,
+  s_req_minor,
+
+} brook_http_parser_state_e;
+
 typedef struct {
+  brook_http_parser_state_e state;
+  unsigned int match_index;
+
   /*
   brook_http_state_e state;
   brook_http_header_state_e header_state;
@@ -27,6 +41,8 @@ typedef struct {
 } brook_http_parser_t;
 
 typedef struct {
+
+  brook_http_parser_t parser;
 
   brook_http_method_e method;
 
@@ -53,6 +69,9 @@ typedef struct {
 
 void brook_http_open(brook_connection_t *con);
 void brook_http_on_close(brook_connection_t *con);
-void brook_http_on_data(brook_connection_t *con);
+void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer);
+
+int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer);
+int brook_http_parse_method(brook_http_request_t *parser, unsigned char ch);
 
 #endif
