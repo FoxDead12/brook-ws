@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 
 /* Tokens as defined by rfc 2616. Also lowercases them.
  *        token       = 1*<any CHAR except CTLs or separators>
@@ -95,6 +96,8 @@ static const char *methods[] = {
     [PUT] = "PUT",
     [PATCH] = "PATCH",
 };
+
+static const char http_minor[] = "HTTP/1.1";
 
 /*
  * Method to initiate this http protocol in connection
@@ -326,6 +329,7 @@ int brook_http_parse_params(brook_http_request_t *req, brook_buffer_t *buffer, u
     req->params.len = parser->match_index;
     parser->state = s_req_minor;
     parser->match_index = 0;
+    parser->sub_state = 0;
     return BROOK_OK;
 
   } else if (parser->sub_state == 0) {
@@ -344,5 +348,38 @@ int brook_http_parse_params(brook_http_request_t *req, brook_buffer_t *buffer, u
 }
 
 int brook_http_parse_minor(brook_http_request_t *req, unsigned char ch) {
+  brook_http_parser_t *parser = &req->parser;
+
+  // catch end of line
+  if (parser->match_index == strlen(http_minor)) {
+    if (parser->sub_state == 0) {
+      if (ch != '\r') {
+        brook_debug("http version error: expected '\\r' after %s, got 0x%02x\n", http_minor, ch);
+        return BROOK_ERROR;
+      }
+      parser->sub_state = 1;
+    } else if (parser->sub_state == 1) {
+      if (ch != '\n') {
+        brook_debug("http version error: expected '\\n' after '\\r', got 0x%02x\n", ch);
+        return BROOK_ERROR;
+      }
+      parser->state = s_req_header_field_start;
+      parser->match_index = 0;
+      parser->sub_state = 0;
+    } else {
+      brook_debug("http version error: invalid sub_state=%d\n", parser->sub_state);
+      return BROOK_ERROR;
+    }
+    return BROOK_OK;
+  }
+
+  unsigned char expected = (unsigned char)http_minor[parser->match_index];
+  if (ch != expected) {
+    brook_debug("http version error: byte 0x%02x at position %d does not match %s (expected 0x%02x)\n", ch, parser->match_index, http_minor, expected);
+    return BROOK_ERROR;
+  }
+
+  parser->match_index++;
+
   return BROOK_OK;
 }

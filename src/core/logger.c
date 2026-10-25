@@ -46,6 +46,10 @@ int brook_logger(brook_logger_t *logger) {
     return BROOK_ERROR;
   }
 
+  if (logger->fd > 0) {
+    close(fd);
+  }
+
   logger->fd = fd;
 
   return BROOK_OK;

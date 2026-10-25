@@ -27,6 +27,8 @@ typedef enum {
   s_req_params,
   s_req_minor,
 
+  s_req_header_field_start,
+
 } brook_http_parser_state_e;
 
 typedef struct {
