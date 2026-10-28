@@ -11,6 +11,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/_types/_ssize_t.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 
 /* Tokens as defined by rfc 2616. Also lowercases them.
@@ -99,6 +101,19 @@ static const char *methods[] = {
 
 static const char http_minor[] = "HTTP/1.1";
 
+// This need be aline with enum
+#define HEADER(s) {s, sizeof(s) - 1}
+
+static const struct {
+  const char *name;
+  uint8_t len;
+} header_names[] = {HEADER("host"), HEADER("content-length"), HEADER("connection"), HEADER("upgrade"), HEADER("sec-websocket-key")};
+
+// header_match_mask is a uint8_t (one bit per header), if you add more than 8 headers
+// raise its type in request.h and the `m` copies in the parser. The hard limit is 32
+// because __builtin_ctz and `1 << i` work on 32 bits.
+static_assert(sizeof(header_names) / sizeof(header_names[0]) <= 8, "header_match_mask is 8 bits: raise its type (max 32) before adding more headers");
+
 /*
  * Method to initiate this http protocol in connection
  */
@@ -136,8 +151,10 @@ void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigne
   brook_buffer_t *memory = con->protocol_ctx;
   brook_http_request_t *req = (brook_http_request_t *)(void *)memory->data;
 
-  // Parse the received data, TODO: handle error
-  brook_http_parse(req, buffer, b, len);
+  // Parse the received data
+  if (brook_http_parse(req, buffer, b, len) == BROOK_ERROR) {
+    // TODO: handle error
+  }
 
   brook_str_print(&req->url);
   brook_str_print(&req->params);
@@ -167,6 +184,9 @@ int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer, unsigned
     case s_req_minor:
       rc = brook_http_parse_minor(req, c);
       break;
+    case s_req_header_field:
+    case s_req_header_value:
+      rc = brook_http_parse_header_line(req, c);
     }
 
     if (rc == BROOK_ERROR) {
@@ -363,7 +383,7 @@ int brook_http_parse_minor(brook_http_request_t *req, unsigned char ch) {
         brook_debug("http version error: expected '\\n' after '\\r', got 0x%02x\n", ch);
         return BROOK_ERROR;
       }
-      parser->state = s_req_header_field_start;
+      parser->state = s_req_header_field;
       parser->match_index = 0;
       parser->sub_state = 0;
     } else {
@@ -380,6 +400,136 @@ int brook_http_parse_minor(brook_http_request_t *req, unsigned char ch) {
   }
 
   parser->match_index++;
+
+  return BROOK_OK;
+}
+
+/*
+ * Will read a header line
+ */
+int brook_http_parse_header_line(brook_http_request_t *req, unsigned char ch) {
+  brook_http_parser_t *parser = &req->parser;
+
+  // Will handle all line of header
+  switch (parser->state) {
+  case s_req_header_field: {
+
+    // We enter in body
+    if (parser->sub_state == 1) {
+      if (ch != '\n') {
+        brook_debug("http header error: expected '\\n' after '\\r', got 0x%02x\n", ch);
+        return BROOK_ERROR;
+      }
+      parser->state = s_req_headers_done;
+      parser->match_index = 0;
+      parser->sub_state = 0;
+      return BROOK_OK;
+    } else if (ch == '\r' && parser->match_index == 0) {
+      parser->sub_state = 1;
+      break;
+    }
+
+    // Convert to token table
+    unsigned char c = tokens[ch];
+
+    if (ch == ':') {
+      if (parser->match_index == 0) {
+        brook_debug("http header error: empty field name\n");
+        return BROOK_ERROR;
+      }
+
+      // The name is complete. header_match_mask has one bit per entry in
+      // header_names that matched every byte read so far, so a bit still set
+      // can be the full header or only a prefix of it (e.g. "ho" of "host").
+      // Walk the set bits (ctz = index of the lowest one, m &= m - 1 drops it)
+      // and take the one whose length equals what we read.
+      // If none does, header_state stays h_general and the value is ignored.
+      parser->header_state = h_general;
+      uint8_t m = parser->header_match_mask;
+      while (m) {
+        // return a index of a bit 1
+        int i = __builtin_ctz(m);
+        if (header_names[i].len == parser->match_index) {
+          parser->header_state = i + 1;
+          brook_debug("http header found: %s (header_state=%d)\n", header_names[i].name, parser->header_state);
+          break;
+        }
+        m &= m - 1;
+      }
+
+      parser->state = s_req_header_value;
+      parser->match_index = 0;
+      parser->sub_state = 0;
+      return BROOK_OK;
+    }
+
+    // if is 0 is invalid char
+    if (c == 0) {
+      brook_debug("http header error: invalid field name byte 0x%02x at position %d\n", ch, parser->match_index);
+      return BROOK_ERROR;
+    }
+
+    // On the first byte of the name, start with every header as a candidate:
+    // set the lowest numb_bits bits to 1 (one bit per entry in header_names).
+    // e.g. numb_bits = 5: (1 << 5) - 1 = 0b100000 - 1 = 0b011111
+    size_t numb_bits = sizeof(header_names) / sizeof(header_names[0]);
+    if (parser->match_index == 0) {
+      parser->header_match_mask = (1u << numb_bits) - 1;
+    }
+
+    // For every candidate still alive in the mask, compare the byte just read
+    // with the byte the header name expects at this position. If it differs,
+    // the header cannot be this one anymore: clear its bit in header_match_mask.
+    // We walk a copy (m) so removing bits from the real mask does not change
+    // the walk. A candidate that has no more chars hits '\0', which never
+    // matches, so it is cleared too (e.g. "hosts" is not "host").
+    uint8_t m = parser->header_match_mask;
+    while (m) {
+      // return a index of a bit 1
+      int i = __builtin_ctz(m);
+      unsigned char expected = tokens[header_names[i].name[parser->match_index]];
+
+      if (expected != c) {
+        parser->header_match_mask &= ~(1u << i);
+      }
+
+      m &= m - 1;
+    }
+
+    parser->match_index++;
+    break;
+  }
+  case s_req_header_value: {
+
+    // Check if is end of header line
+    if (ch == '\r') {
+      parser->sub_state = 1;
+      break;
+    } else if (parser->sub_state == 1) {
+      if (ch != '\n') {
+        brook_debug("http header error: expected '\\n' after '\\r', got 0x%02x\n", ch);
+        return BROOK_ERROR;
+      }
+      parser->state = s_req_header_field;
+      parser->match_index = 0;
+      parser->sub_state = 0;
+      return BROOK_OK;
+    }
+
+    // Ignore spaces in start of value
+    if ((ch == ' ' || ch == '\t') && parser->match_index == 0) {
+      break;
+    }
+
+    if (!IS_HEADER_VALUE_CHAR(ch)) {
+      brook_debug("http header error: invalid char 0x%02x at position %u of the header value\n", ch, parser->match_index);
+      return BROOK_ERROR;
+    }
+
+    parser->match_index++;
+    break;
+  }
+  }
 
   return BROOK_OK;
 }

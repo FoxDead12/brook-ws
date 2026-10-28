@@ -3,12 +3,14 @@
 
 #include "core/connection.h"
 #include "core/str.h"
+#include <stdint.h>
 
 #define T(v) (1 << ((v) & 7))
 #define BIT_AT(a, i) (!!((unsigned int)(a)[(unsigned int)(i) >> 3] & (1 << ((unsigned int)(i) & 7))))
 #define IS_URL_CHAR(c) (BIT_AT(url_chars, (unsigned char)c))
 #define IS_NUM(c) ((c) >= '0' && (c) <= '9')
 #define IS_BASE64(C) ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c == '+') || (c == '/'))
+#define IS_HEADER_VALUE_CHAR(c) ((c) == '\t' || ((c) >= 0x20 && (c) != 0x7f))
 
 typedef enum {
   DELETE,
@@ -27,14 +29,30 @@ typedef enum {
   s_req_params,
   s_req_minor,
 
-  s_req_header_field_start,
+  s_req_header_field,
+  s_req_header_value,
+  s_req_headers_done,
+
+  s_req_body,
+  s_req_done
 
 } brook_http_parser_state_e;
+
+typedef enum {
+  h_general,
+  h_host,
+  h_content_length,
+  h_connection,
+  h_upgrade,
+  h_ws_key,
+} brook_http_header_e;
 
 typedef struct {
   brook_http_parser_state_e state;
   unsigned int match_index;
   unsigned int sub_state;
+  brook_http_header_e header_state;
+  uint8_t header_match_mask;
 
   /*
   brook_http_state_e state;
@@ -82,5 +100,6 @@ int brook_http_parse_method(brook_http_request_t *parser, unsigned char ch);
 int brook_http_parse_url(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at);
 int brook_http_parse_params(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at);
 int brook_http_parse_minor(brook_http_request_t *req, unsigned char ch);
+int brook_http_parse_header_line(brook_http_request_t *req, unsigned char ch);
 
 #endif
