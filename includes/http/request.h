@@ -70,6 +70,7 @@ typedef struct {
   brook_str_t url;
   brook_str_t params;
 
+  size_t content_length;
   /*
   brook_method_e method;
   unsigned char version_major;

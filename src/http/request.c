@@ -155,9 +155,6 @@ void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigne
   if (brook_http_parse(req, buffer, b, len) == BROOK_ERROR) {
     // TODO: handle error
   }
-
-  brook_str_print(&req->url);
-  brook_str_print(&req->params);
 }
 
 /*
@@ -487,7 +484,7 @@ int brook_http_parse_header_line(brook_http_request_t *req, unsigned char ch) {
     while (m) {
       // return a index of a bit 1
       int i = __builtin_ctz(m);
-      unsigned char expected = tokens[header_names[i].name[parser->match_index]];
+      unsigned char expected = tokens[(unsigned char)header_names[i].name[parser->match_index]];
 
       if (expected != c) {
         parser->header_match_mask &= ~(1u << i);
@@ -511,6 +508,7 @@ int brook_http_parse_header_line(brook_http_request_t *req, unsigned char ch) {
         return BROOK_ERROR;
       }
       parser->state = s_req_header_field;
+      parser->header_state = h_general;
       parser->match_index = 0;
       parser->sub_state = 0;
       return BROOK_OK;
@@ -524,6 +522,17 @@ int brook_http_parse_header_line(brook_http_request_t *req, unsigned char ch) {
     if (!IS_HEADER_VALUE_CHAR(ch)) {
       brook_debug("http header error: invalid char 0x%02x at position %u of the header value\n", ch, parser->match_index);
       return BROOK_ERROR;
+    }
+
+    if (parser->header_state == h_content_length) {
+      if (!IS_NUM(ch)) {
+        brook_debug("http header error: invalid character 0x%02x at position %u of the header value (expected a digit)\n", ch, parser->match_index);
+        return BROOK_ERROR;
+      }
+      uint64_t t = req->content_length;
+      t *= 10;
+      t += ch - '0';
+      req->content_length = t;
     }
 
     parser->match_index++;
