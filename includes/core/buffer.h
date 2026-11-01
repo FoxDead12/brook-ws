@@ -8,9 +8,11 @@ typedef struct brook_buffer_s {
   unsigned char *data;
   struct brook_buffer_s *next;
   int in_use;
+  int send;
 } brook_buffer_t;
 
 brook_buffer_t *brook_buffer_get_free(brook_buffer_t **head);
+int brook_buffer_pop(brook_buffer_t **head);
 int brook_buffer_destroy(brook_buffer_t *head);
 
 #endif

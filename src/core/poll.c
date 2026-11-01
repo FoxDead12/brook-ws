@@ -110,3 +110,7 @@ int brook_poll_remove(int slot) {
 void brook_poll_set_ctx(int slot, void *ctx) {
   process.handlers[slot].ctx = ctx;
 }
+
+void brook_poll_set_events(int slot, short events) {
+  process.fds[slot].events = events;
+}

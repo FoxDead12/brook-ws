@@ -41,6 +41,23 @@ brook_buffer_t *brook_buffer_get_free(brook_buffer_t **head) {
   return buffer;
 }
 
+/*
+ * Method to remove the first buffer of the list and give it back to the pool
+ */
+int brook_buffer_pop(brook_buffer_t **head) {
+
+  brook_buffer_t *buffer = *head;
+  if (buffer == NULL) {
+    return BROOK_ERROR;
+  }
+
+  // Detach first, the pool only accepts a buffer without next
+  *head = buffer->next;
+  buffer->next = NULL;
+
+  return brook_pool_free(process.pool_head, buffer);
+}
+
 int brook_buffer_destroy(brook_buffer_t *head) {
 
   brook_buffer_t *buffer = head;

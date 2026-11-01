@@ -99,6 +99,7 @@ brook_buffer_t *brook_pool_malloc(brook_pool_t *head) {
   node->free = node->size;
   node->next = NULL;
   node->in_use = 1;
+  node->send = 0;
 
   brook_debug("pool malloc node=%p base=%p size=%d\n", (void *)node, (void *)node->data, node->size);
 

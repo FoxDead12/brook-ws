@@ -16,5 +16,6 @@ int brook_poll_next_slot(void);
 int brook_poll_add(int fd, short events, brook_handler_t handler);
 int brook_poll_remove(int slot);
 void brook_poll_set_ctx(int slot, void *ctx);
+void brook_poll_set_events(int slot, short events);
 
 #endif
