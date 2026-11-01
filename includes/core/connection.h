@@ -20,7 +20,10 @@ struct brook_connection_s {
   int slot;
   int port;
   char ip[INET_ADDRSTRLEN];
+
   brook_buffer_t *buffers;
+  brook_buffer_t *out;
+
   brook_protocol_t *protocol;
   brook_buffer_t *protocol_ctx; // the protocols will write here
 };
@@ -31,5 +34,6 @@ int brook_connection_set_protocol(brook_connection_t *con, brook_protocol_t *pro
 void brook_connection_accept(void *ctx);
 void brook_connection_destroy(void *ctx);
 void brook_connection_read(void *ctx);
+void brook_connection_write(void *ctx);
 
 #endif

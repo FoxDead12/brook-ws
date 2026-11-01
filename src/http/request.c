@@ -6,6 +6,7 @@
 #include "core/pool.h"
 #include "core/str.h"
 #include "core/types.h"
+#include "http/response.h"
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -153,7 +154,8 @@ void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigne
 
   // Parse the received data
   if (brook_http_parse(req, buffer, b, len) == BROOK_ERROR) {
-    // TODO: handle error
+    brook_http_response_static(con, 400, "Malformed HTTP request");
+    return;
   }
 }
 

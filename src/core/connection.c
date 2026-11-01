@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/poll.h>
@@ -47,12 +48,13 @@ void brook_connection_accept(void *ctx) {
       .slot = idx,
       .port = ntohs(address.sin_port),
       .buffers = NULL,
+      .out = NULL,
       .protocol_ctx = NULL,
       .protocol = default_protocol,
   };
   inet_ntop(AF_INET, &address.sin_addr, con->ip, INET_ADDRSTRLEN);
 
-  if (brook_poll_add(fd, POLLIN, (brook_handler_t){.on_read = brook_connection_read, .on_write = NULL, .on_error = brook_connection_destroy, .ctx = con}) == BROOK_ERROR) {
+  if (brook_poll_add(fd, POLLIN, (brook_handler_t){.on_read = brook_connection_read, .on_write = brook_connection_write, .on_error = brook_connection_destroy, .ctx = con}) == BROOK_ERROR) {
     memset(con, 0, sizeof(brook_connection_t));
     close(fd);
     return;
@@ -143,6 +145,15 @@ void brook_connection_read(void *ctx) {
 }
 
 /*
+ * Method when a connection need send data
+ */
+void brook_connection_write(void *ctx) {
+  brook_connection_t *con = (brook_connection_t *)ctx;
+
+  return;
+}
+
+/*
  * Only for the start of worker
  */
 int brook_connection_set_default_protocol(brook_protocol_t *protocol) {
@@ -167,6 +178,11 @@ int brook_connection_set_protocol(brook_connection_t *con, brook_protocol_t *pro
   if (con->protocol != NULL && con->protocol->on_open != NULL) {
     con->protocol->on_open(con);
   }
+
+  return BROOK_OK;
+}
+
+int brook_connection_queue(brook_connection_t *con, unsigned char *data, size_t len) {
 
   return BROOK_OK;
 }
