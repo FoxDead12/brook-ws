@@ -35,5 +35,6 @@ void brook_connection_accept(void *ctx);
 void brook_connection_destroy(void *ctx);
 void brook_connection_read(void *ctx);
 void brook_connection_write(void *ctx);
+int brook_connection_queue(brook_connection_t *con, unsigned char *data, size_t len);
 
 #endif

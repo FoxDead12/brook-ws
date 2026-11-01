@@ -182,6 +182,9 @@ int brook_connection_set_protocol(brook_connection_t *con, brook_protocol_t *pro
   return BROOK_OK;
 }
 
+/*
+ * Will active the event write to comunication socket and write in output buffer
+ */
 int brook_connection_queue(brook_connection_t *con, unsigned char *data, size_t len) {
 
   return BROOK_OK;
