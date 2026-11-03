@@ -1,5 +1,4 @@
 #include "http/request.h"
-#include "http/parser.h"
 #include "core/buffer.h"
 #include "core/connection.h"
 #include "core/globals.h"
@@ -7,6 +6,7 @@
 #include "core/pool.h"
 #include "core/str.h"
 #include "core/types.h"
+#include "http/parser.h"
 #include "http/response.h"
 #include <assert.h>
 #include <stddef.h>
@@ -47,12 +47,8 @@ void brook_http_open(brook_connection_t *con) {
   // We need contain this check before compile
   _Static_assert(sizeof(brook_http_request_t) <= BROOK_POOL_BLOCK_SIZE, "request does not fit in a pool block");
 
-  // Define the struct in memory and clean the bytes
-  brook_http_request_t *req = (brook_http_request_t *)(void *)memory->data;
-  memset(req, 0, sizeof(*req));
-
-  // set the default keep alive active
-  req->keep_alive = 1;
+  // Will start from zero the http information
+  brook_http_reset(con);
 }
 
 /*
@@ -87,5 +83,17 @@ void brook_http_on_drain(brook_connection_t *con) {
   // Because cliente hask or error append
   if (req->keep_alive == 0) {
     brook_connection_destroy(con);
+    return;
   }
+
+  brook_http_reset(con);
+}
+
+void brook_http_reset(brook_connection_t *con) {
+  brook_buffer_t *memory = con->protocol_ctx;
+
+  brook_http_request_t *req = (brook_http_request_t *)(void *)memory->data;
+  memset(req, 0, sizeof(*req));
+
+  req->keep_alive = 1;
 }

@@ -127,6 +127,6 @@ void brook_http_open(brook_connection_t *con);
 void brook_http_on_close(brook_connection_t *con);
 void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len);
 void brook_http_on_drain(brook_connection_t *con);
-
+void brook_http_reset(brook_connection_t *con);
 
 #endif
