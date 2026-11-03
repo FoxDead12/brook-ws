@@ -3,14 +3,38 @@
 
 #include "core/connection.h"
 #include "core/str.h"
+#include <stddef.h>
 #include <stdint.h>
 
-#define T(v) (1 << ((v) & 7))
-#define BIT_AT(a, i) (!!((unsigned int)(a)[(unsigned int)(i) >> 3] & (1 << ((unsigned int)(i) & 7))))
-#define IS_URL_CHAR(c) (BIT_AT(url_chars, (unsigned char)c))
-#define IS_NUM(c) ((c) >= '0' && (c) <= '9')
-#define IS_BASE64(C) ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c == '+') || (c == '/'))
-#define IS_HEADER_VALUE_CHAR(c) ((c) == '\t' || ((c) >= 0x20 && (c) != 0x7f))
+#define BROOK_HTTP_HEADER_MAX 8192
+
+/*
+ * Every way the request parser can fail. BROOK_HTTP_OK must stay 0.
+ * This need be aligned with brook_http_errors[] in request.c
+ */
+typedef enum {
+  BROOK_HTTP_OK = 0,
+
+  BROOK_HTTP_ERR_BAD_REQUEST,     // generic malformed request
+  BROOK_HTTP_ERR_BAD_METHOD,      // unknown or unsupported method
+  BROOK_HTTP_ERR_BAD_URL,         // url does not start with '/' or has an invalid char
+  BROOK_HTTP_ERR_URL_TOO_LONG,    // url bigger than the allowed limit
+  BROOK_HTTP_ERR_BAD_PARAMS,      // malformed query string (key=value&...)
+  BROOK_HTTP_ERR_BAD_VERSION,     // not HTTP/1.1
+  BROOK_HTTP_ERR_BAD_LINE_END,    // '\r' not followed by '\n'
+  BROOK_HTTP_ERR_BAD_HEADER,      // empty or invalid header name / value
+  BROOK_HTTP_ERR_BAD_CONTENT_LEN, // content-length is not a number
+  BROOK_HTTP_ERR_HEADER_TOO_BIG,  // headers bigger than BROOK_HTTP_HEADER_MAX
+
+  BROOK_HTTP_ERR_COUNT
+} brook_http_err_e;
+
+typedef struct {
+  uint16_t status;
+  const char *message;
+} brook_http_error_t;
+
+extern const brook_http_error_t brook_http_errors[BROOK_HTTP_ERR_COUNT];
 
 typedef enum {
   DELETE,
@@ -48,11 +72,16 @@ typedef enum {
 } brook_http_header_e;
 
 typedef struct {
+
+  // General porpose
   brook_http_parser_state_e state;
   unsigned int match_index;
   unsigned int sub_state;
-  brook_http_header_e header_state;
+
+  // Related to headers
+  unsigned int header_size;
   uint8_t header_match_mask;
+  brook_http_header_e header_state;
 
   /*
   brook_http_state_e state;
@@ -71,6 +100,8 @@ typedef struct {
   brook_str_t params;
 
   size_t content_length;
+  unsigned keep_alive : 1;
+
   /*
   brook_method_e method;
   unsigned char version_major;
@@ -95,12 +126,7 @@ typedef struct {
 void brook_http_open(brook_connection_t *con);
 void brook_http_on_close(brook_connection_t *con);
 void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len);
+void brook_http_on_drain(brook_connection_t *con);
 
-int brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *b, size_t len);
-int brook_http_parse_method(brook_http_request_t *parser, unsigned char ch);
-int brook_http_parse_url(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at);
-int brook_http_parse_params(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at);
-int brook_http_parse_minor(brook_http_request_t *req, unsigned char ch);
-int brook_http_parse_header_line(brook_http_request_t *req, unsigned char ch);
 
 #endif

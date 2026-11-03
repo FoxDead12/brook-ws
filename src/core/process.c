@@ -14,6 +14,7 @@ static brook_protocol_t http_protocol = {
     .on_open = brook_http_open,
     .on_data = brook_http_on_data,
     .on_close = brook_http_on_close,
+    .on_drain = brook_http_on_drain,
 };
 
 /*

@@ -186,6 +186,9 @@ void brook_connection_write(void *ctx) {
   // Last buffer sent, disable POLLOUT or poll will keep waking up
   if (con->out == NULL) {
     brook_poll_set_events(con->slot, POLLIN);
+    if (con->protocol != NULL && con->protocol->on_drain != NULL) {
+      con->protocol->on_drain(con);
+    }
   }
 }
 
@@ -221,7 +224,7 @@ int brook_connection_set_protocol(brook_connection_t *con, brook_protocol_t *pro
 /*
  * Will active the event write to comunication socket and write in output buffer
  */
-int brook_connection_queue(brook_connection_t *con, unsigned char *data, size_t len) {
+int brook_connection_queue(brook_connection_t *con, const unsigned char *data, size_t len) {
 
   size_t offset = 0;
 

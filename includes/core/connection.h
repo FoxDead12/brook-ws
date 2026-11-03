@@ -12,6 +12,7 @@ typedef struct brook_connection_s brook_connection_t;
 typedef struct {
   void (*on_open)(brook_connection_t *con);
   void (*on_data)(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len);
+  void (*on_drain)(brook_connection_t *con);
   void (*on_close)(brook_connection_t *con);
 } brook_protocol_t;
 
@@ -35,6 +36,6 @@ void brook_connection_accept(void *ctx);
 void brook_connection_destroy(void *ctx);
 void brook_connection_read(void *ctx);
 void brook_connection_write(void *ctx);
-int brook_connection_queue(brook_connection_t *con, unsigned char *data, size_t len);
+int brook_connection_queue(brook_connection_t *con, const unsigned char *data, size_t len);
 
 #endif
