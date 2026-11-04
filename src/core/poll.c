@@ -107,10 +107,7 @@ int brook_poll_remove(int slot) {
 /*
  * Allow change a ctx from a existent handler
  */
-void brook_poll_set_ctx(int slot, void *ctx) {
-  process.handlers[slot].ctx = ctx;
-}
-
-void brook_poll_set_events(int slot, short events) {
-  process.fds[slot].events = events;
-}
+void brook_poll_set_ctx(int slot, void *ctx) { process.handlers[slot].ctx = ctx; }
+void brook_poll_set_events(int slot, short events) { process.fds[slot].events = events; }
+void brook_poll_add_events(int slot, short events) { process.fds[slot].events |= events; }
+void brook_poll_del_events(int slot, short events) { process.fds[slot].events &= ~events; }

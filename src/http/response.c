@@ -35,7 +35,7 @@ int brook_http_response_static(brook_connection_t *con, uint16_t status_code, co
   }
 
   if (body_len > 0) {
-    return brook_connection_queue(con, (const unsigned char *)body, body_len);
+    return brook_connection_send(con, (const unsigned char *)body, body_len);
   }
 
   return BROOK_OK;
@@ -62,7 +62,7 @@ static int brook_http_send(brook_connection_t *con, const char *piece) {
   if (piece == NULL) {
     return BROOK_ERROR;
   }
-  return brook_connection_queue(con, (const unsigned char *)piece, strlen(piece));
+  return brook_connection_send(con, (const unsigned char *)piece, strlen(piece));
 }
 
 /*

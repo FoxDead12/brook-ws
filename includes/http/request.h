@@ -83,12 +83,6 @@ typedef struct {
   uint8_t header_match_mask;
   brook_http_header_e header_state;
 
-  /*
-  brook_http_state_e state;
-  brook_http_header_state_e header_state;
-  unsigned short match_index; // ... position inside a multi byte token
-  uint64_t bytes_parsed;
-  */
 } brook_http_parser_t;
 
 typedef struct {
@@ -102,25 +96,6 @@ typedef struct {
   size_t content_length;
   unsigned keep_alive : 1;
 
-  /*
-  brook_method_e method;
-  unsigned char version_major;
-  unsigned char version_minor;
-
-  unsigned keep_alive : 1;
-  unsigned upgrade : 1;
-  unsigned chunked : 1;
-
-  uint16_t header_count;
-  uint64_t content_length;
-
-  brook_str_t url;
-  brook_str_t query_string; // ... raw, parsed on demand
-  brook_str_t host;
-  brook_str_t cookies; // ... raw, parsed on demand
-  brook_str_t ws_key;  // ... Sec-WebSocket-Key when upgrade
-
-  */
 } brook_http_request_t;
 
 void brook_http_open(brook_connection_t *con);

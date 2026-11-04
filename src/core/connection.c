@@ -155,7 +155,7 @@ void brook_connection_write(void *ctx) {
   brook_buffer_t *head = con->out;
   if (head == NULL) {
     // Nothing to send, disable POLLOUT or poll will keep waking up
-    brook_poll_set_events(con->slot, POLLIN);
+    brook_poll_del_events(con->slot, POLLOUT);
     return;
   }
 
@@ -185,7 +185,9 @@ void brook_connection_write(void *ctx) {
 
   // Last buffer sent, disable POLLOUT or poll will keep waking up
   if (con->out == NULL) {
-    brook_poll_set_events(con->slot, POLLIN);
+    brook_poll_del_events(con->slot, POLLOUT);
+
+    // send callback when everything in out was write to socket
     if (con->protocol != NULL && con->protocol->on_drain != NULL) {
       con->protocol->on_drain(con);
     }
@@ -193,7 +195,42 @@ void brook_connection_write(void *ctx) {
 }
 
 /*
- * Only for the start of worker
+ * Method used to write content to out buffers to socket write
+ */
+int brook_connection_send(brook_connection_t *con, const unsigned char *data, size_t len) {
+
+  size_t offset = 0;
+
+  // One buffer may not fit everything, so keep copying until all len bytes are stored
+  while (offset < len) {
+
+    // Get a buffer with free space, a new one is added to the list when none is free
+    brook_buffer_t *buffer = brook_buffer_get_free(&con->out);
+    if (buffer == NULL) {
+      brook_log(&logger, L_ERROR, "Can't get a buffer to write for connection fd=%d\n", con->fd);
+      brook_connection_destroy(con);
+      return BROOK_ERROR;
+    }
+
+    // Copy the smaller of what is left to store and the free space of the buffer
+    size_t remaining = len - offset;
+    size_t n = remaining < (size_t)buffer->free ? remaining : (size_t)buffer->free;
+
+    memcpy(buffer->data + buffer->len, data + offset, n);
+
+    buffer->len += n;
+    buffer->free -= n;
+    offset += n;
+  }
+
+  // There is data to send, enable POLLOUT so poll calls brook_connection_write
+  brook_poll_add_events(con->slot, POLLOUT);
+
+  return BROOK_OK;
+}
+
+/*
+ * Only  for the start of worker
  */
 int brook_connection_set_default_protocol(brook_protocol_t *protocol) {
   default_protocol = protocol;
@@ -222,36 +259,15 @@ int brook_connection_set_protocol(brook_connection_t *con, brook_protocol_t *pro
 }
 
 /*
- * Will active the event write to comunication socket and write in output buffer
+ * Start receiving data from the socket (enable POLLIN)
  */
-int brook_connection_queue(brook_connection_t *con, const unsigned char *data, size_t len) {
+void brook_connection_read_start(brook_connection_t *con) {
+  brook_poll_add_events(con->slot, POLLIN);
+}
 
-  size_t offset = 0;
-
-  // One buffer may not fit everything, so keep copying until all len bytes are stored
-  while (offset < len) {
-
-    // Get a buffer with free space, a new one is added to the list when none is free
-    brook_buffer_t *buffer = brook_buffer_get_free(&con->out);
-    if (buffer == NULL) {
-      brook_log(&logger, L_ERROR, "Can't get a buffer to write for connection fd=%d\n", con->fd);
-      brook_connection_destroy(con);
-      return BROOK_ERROR;
-    }
-
-    // Copy the smaller of what is left to store and the free space of the buffer
-    size_t remaining = len - offset;
-    size_t n = remaining < (size_t)buffer->free ? remaining : (size_t)buffer->free;
-
-    memcpy(buffer->data + buffer->len, data + offset, n);
-
-    buffer->len += n;
-    buffer->free -= n;
-    offset += n;
-  }
-
-  // There is data to send, enable POLLOUT so poll calls brook_connection_write
-  brook_poll_set_events(con->slot, POLLIN | POLLOUT);
-
-  return BROOK_OK;
+/*
+ * Stop receiving data (backpressure), the kernel buffer fills and TCP slows the client
+ */
+void brook_connection_read_stop(brook_connection_t *con) {
+  brook_poll_del_events(con->slot, POLLIN);
 }

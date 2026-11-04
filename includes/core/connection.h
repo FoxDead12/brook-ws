@@ -29,13 +29,16 @@ struct brook_connection_s {
   brook_buffer_t *protocol_ctx; // the protocols will write here
 };
 
-int brook_connection_set_default_protocol(brook_protocol_t *protocol);
-int brook_connection_set_protocol(brook_connection_t *con, brook_protocol_t *protocol);
-
 void brook_connection_accept(void *ctx);
 void brook_connection_destroy(void *ctx);
 void brook_connection_read(void *ctx);
 void brook_connection_write(void *ctx);
-int brook_connection_queue(brook_connection_t *con, const unsigned char *data, size_t len);
+int brook_connection_send(brook_connection_t *con, const unsigned char *data, size_t len);
+
+int brook_connection_set_default_protocol(brook_protocol_t *protocol);
+int brook_connection_set_protocol(brook_connection_t *con, brook_protocol_t *protocol);
+
+void brook_connection_read_start(brook_connection_t *con);
+void brook_connection_read_stop(brook_connection_t *con);
 
 #endif
