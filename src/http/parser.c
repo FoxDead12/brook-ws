@@ -117,17 +117,18 @@ static const struct {
 // because __builtin_ctz and `1 << i` work on 32 bits.
 static_assert(sizeof(header_names) / sizeof(header_names[0]) <= 8, "header_match_mask is 8 bits: raise its type (max 32) before adding more headers");
 
-static brook_http_err_e brook_http_parse_method(brook_http_request_t *req, unsigned char ch);
-static brook_http_err_e brook_http_parse_url(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at);
-static brook_http_err_e brook_http_parse_params(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at);
-static brook_http_err_e brook_http_parse_minor(brook_http_request_t *req, unsigned char ch);
-static brook_http_err_e brook_http_parse_header_line(brook_http_request_t *req, unsigned char ch);
+static brook_http_err_e brook_http_parse_method(brook_http_t *http, unsigned char ch);
+static brook_http_err_e brook_http_parse_url(brook_http_t *http, brook_buffer_t *buffer, unsigned char *at);
+static brook_http_err_e brook_http_parse_params(brook_http_t *http, brook_buffer_t *buffer, unsigned char *at);
+static brook_http_err_e brook_http_parse_minor(brook_http_t *http, unsigned char ch);
+static brook_http_err_e brook_http_parse_header_line(brook_http_t *http, unsigned char ch);
 
 /*
  * Will iterate a buffer char by char to parse the http message
  */
 brook_http_err_e brook_http_parse(brook_http_t *http, brook_buffer_t *buffer, unsigned char *b, size_t len) {
-  brook_http_parser_t *parser = &req->parser;
+
+  brook_http_parser_t *parser = &http->parser;
 
   for (size_t i = 0; i < len; i++) {
     unsigned char c = b[i];
@@ -136,20 +137,20 @@ brook_http_err_e brook_http_parse(brook_http_t *http, brook_buffer_t *buffer, un
     switch (parser->state) {
     case s_req_start:
     case s_req_method:
-      rc = brook_http_parse_method(req, c);
+      rc = brook_http_parse_method(http, c);
       break;
     case s_req_url:
-      rc = brook_http_parse_url(req, buffer, &b[i]);
+      rc = brook_http_parse_url(http, buffer, &b[i]);
       break;
     case s_req_params:
-      rc = brook_http_parse_params(req, buffer, &b[i]);
+      rc = brook_http_parse_params(http, buffer, &b[i]);
       break;
     case s_req_minor:
-      rc = brook_http_parse_minor(req, c);
+      rc = brook_http_parse_minor(http, c);
       break;
     case s_req_header_field:
     case s_req_header_value:
-      rc = brook_http_parse_header_line(req, c);
+      rc = brook_http_parse_header_line(http, c);
       break;
     }
 
@@ -171,16 +172,14 @@ brook_http_err_e brook_http_parse(brook_http_t *http, brook_buffer_t *buffer, un
 
     // One request at a time: stop here, the rest of the buffer stays pending
     if (parser->state == s_req_done) {
-
-      size_t offset = (size_t)((&b[i] + 1) - buffer->data);
-      if (offset >= buffer->len) { // nada pendente
+      int offset = (size_t)((&b[i] + 1) - buffer->data);
+      if (offset >= buffer->len) {
         parser->offset = 0;
         parser->cursor = NULL;
       } else {
         parser->offset = (unsigned int)offset;
         parser->cursor = buffer;
       }
-
       break;
     }
   }
@@ -191,10 +190,11 @@ brook_http_err_e brook_http_parse(brook_http_t *http, brook_buffer_t *buffer, un
 /*
  * Will read the method of request one char at a time, it ends when finds the space after the name
  */
-static brook_http_err_e brook_http_parse_method(brook_http_request_t *req, unsigned char ch) {
+static brook_http_err_e brook_http_parse_method(brook_http_t *http, unsigned char ch) {
   // Get the char from tokens chars image is 'G' will transform in 'g'
   unsigned char c = tokens[ch];
-  brook_http_parser_t *parser = &req->parser;
+  brook_http_parser_t *parser = &http->parser;
+  brook_http_request_t *req = &http->request;
 
   assert(parser->state == s_req_start || parser->state == s_req_method);
 
@@ -257,8 +257,9 @@ static brook_http_err_e brook_http_parse_method(brook_http_request_t *req, unsig
   return BROOK_HTTP_OK;
 }
 
-static brook_http_err_e brook_http_parse_url(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at) {
-  brook_http_parser_t *parser = &req->parser;
+static brook_http_err_e brook_http_parse_url(brook_http_t *http, brook_buffer_t *buffer, unsigned char *at) {
+  brook_http_parser_t *parser = &http->parser;
+  brook_http_request_t *req = &http->request;
   unsigned char ch = *at;
 
   assert(parser->state == s_req_url);
@@ -276,14 +277,14 @@ static brook_http_err_e brook_http_parse_url(brook_http_request_t *req, brook_bu
 
   // end of url
   if (ch == '?') {
-    req->url.len = req->parser.match_index;
+    req->url.len = parser->match_index;
     parser->state = s_req_params;
     parser->match_index = 0;
     return BROOK_HTTP_OK;
   }
 
   if (ch == ' ') {
-    req->url.len = req->parser.match_index;
+    req->url.len = parser->match_index;
     parser->state = s_req_minor;
     parser->match_index = 0;
     return BROOK_HTTP_OK;
@@ -300,8 +301,9 @@ static brook_http_err_e brook_http_parse_url(brook_http_request_t *req, brook_bu
   return BROOK_HTTP_OK;
 }
 
-static brook_http_err_e brook_http_parse_params(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *at) {
-  brook_http_parser_t *parser = &req->parser;
+static brook_http_err_e brook_http_parse_params(brook_http_t *http, brook_buffer_t *buffer, unsigned char *at) {
+  brook_http_parser_t *parser = &http->parser;
+  brook_http_request_t *req = &http->request;
   unsigned char ch = *at;
 
   assert(parser->state == s_req_params);
@@ -357,8 +359,8 @@ static brook_http_err_e brook_http_parse_params(brook_http_request_t *req, brook
   return BROOK_HTTP_OK;
 }
 
-static brook_http_err_e brook_http_parse_minor(brook_http_request_t *req, unsigned char ch) {
-  brook_http_parser_t *parser = &req->parser;
+static brook_http_err_e brook_http_parse_minor(brook_http_t *http, unsigned char ch) {
+  brook_http_parser_t *parser = &http->parser;
 
   // catch end of line
   if (parser->match_index == strlen(http_minor)) {
@@ -397,8 +399,9 @@ static brook_http_err_e brook_http_parse_minor(brook_http_request_t *req, unsign
 /*
  * Will read a header line
  */
-static brook_http_err_e brook_http_parse_header_line(brook_http_request_t *req, unsigned char ch) {
-  brook_http_parser_t *parser = &req->parser;
+static brook_http_err_e brook_http_parse_header_line(brook_http_t *http, unsigned char ch) {
+  brook_http_parser_t *parser = &http->parser;
+  brook_http_request_t *req = &http->request;
 
   // Will handle all line of header
   switch (parser->state) {
@@ -515,6 +518,22 @@ static brook_http_err_e brook_http_parse_header_line(brook_http_request_t *req, 
     if (!IS_HEADER_VALUE_CHAR(ch)) {
       brook_debug("http header error: invalid char 0x%02x at position %u of the header value\n", ch, parser->match_index);
       return BROOK_HTTP_ERR_BAD_HEADER;
+    }
+
+    if (parser->header_state == h_connection) {
+      // Values are case-insensitive, tokens lowercases the char
+      unsigned char lower = (unsigned char)tokens[ch];
+
+      // First byte chooses the word: 'k' = keep-alive, anything else is checked as close
+      if (parser->match_index == 0) {
+        req->keep_alive = (lower == 'k');
+      }
+
+      const char *word = req->keep_alive ? "keep-alive" : "close";
+      if (parser->match_index >= strlen(word) || lower != (unsigned char)word[parser->match_index]) {
+        brook_debug("http header error: connection value must be close or keep-alive\n");
+        return BROOK_HTTP_ERR_BAD_HEADER;
+      }
     }
 
     if (parser->header_state == h_content_length) {

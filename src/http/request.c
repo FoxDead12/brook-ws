@@ -48,7 +48,7 @@ void brook_http_open(brook_connection_t *con) {
   _Static_assert(sizeof(brook_http_t) <= BROOK_POOL_BLOCK_SIZE, "request does not fit in a pool block");
 
   // "allocate the parser in memory of http protocol"
-  brook_http_t *http = (brook_http_t *)memory->data;
+  brook_http_t *http = (brook_http_t *)(void *)memory->data;
   memset(http, 0, sizeof(*http));
 }
 
@@ -96,6 +96,8 @@ void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigne
     brook_debug("http request done fd=%d pending=%s offset=%u\n", con->fd, parser->cursor ? "yes" : "no", parser->offset);
     brook_connection_read_stop(con);
     brook_http_parser_reset(parser);
+
+    brook_http_response_static(req, 200, "recebido");
   }
 }
 
