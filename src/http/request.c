@@ -64,45 +64,73 @@ void brook_http_on_close(brook_connection_t *con) {
  * Method called each time connection read data
  */
 void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len) {
-
-  // Get the http struct from memory
   brook_buffer_t *memory = con->protocol_ctx;
   brook_http_t *http = (brook_http_t *)(void *)memory->data;
   brook_http_parser_t *parser = &http->parser;
+  brook_http_request_t *req = &http->request;
 
   // start the request parse will run olny one time per request
   if (parser->state == s_req_start) {
-    parser->start_buffer = buffer;
-    parser->start_offset = (int)(b - buffer->data);
+    brook_debug("http new request fd=%d len=%zu\n", con->fd, len);
+    memset(req, 0, sizeof(*req));
+    req->keep_alive = 1;
+    req->con = con;
   }
 
-  // Parse the received data
-  brook_http_err_e err = brook_http_parse(req, buffer, b, len);
-  if (err != BROOK_HTTP_OK) {
+  // parser the buffer data looking for a request
+  brook_http_err_e error = brook_http_parse(http, buffer, b, len);
+
+  // If error append will close the connection because is a not valid request
+  if (error != BROOK_HTTP_OK) {
+    // stop read because will close the socket
     req->keep_alive = 0;
-    brook_http_response_static(con, brook_http_errors[err].status, brook_http_errors[err].message);
+    brook_connection_read_stop(con);
+    if (brook_http_response_static(req, brook_http_errors[error].status, brook_http_errors[error].message) == BROOK_ERROR) {
+      brook_connection_destroy(con);
+    }
     return;
+  }
+
+  // Request parser will restart probably and disable read
+  if (parser->state == s_req_done) {
+    brook_debug("http request done fd=%d pending=%s offset=%u\n", con->fd, parser->cursor ? "yes" : "no", parser->offset);
+    brook_connection_read_stop(con);
+    brook_http_parser_reset(parser);
   }
 }
 
+/*
+ * Method called each time the out buffers on write is null/empty
+ */
 void brook_http_on_drain(brook_connection_t *con) {
   brook_buffer_t *memory = con->protocol_ctx;
-  brook_http_request_t *req = (brook_http_request_t *)(void *)memory->data;
+  brook_http_t *http = (brook_http_t *)(void *)memory->data;
+  brook_http_parser_t *parser = &http->parser;
+  brook_http_request_t *req = &http->request;
 
-  // Because cliente hask or error append
   if (req->keep_alive == 0) {
     brook_connection_destroy(con);
     return;
   }
 
-  brook_http_reset(con);
+  // check if we dont contain pendent values to read
+  if (parser->cursor != NULL) {
+    brook_buffer_t *cur = parser->cursor;
+    size_t off = parser->offset;
+    parser->cursor = NULL;
+    parser->offset = 0;
+    brook_debug("http resume pending bytes=%zu offset=%zu fd=%d\n", (size_t)(cur->len - off), off, con->fd);
+    brook_http_on_data(con, cur, cur->data + off, cur->len - off);
+  }
+
+  brook_connection_read_start(con);
 }
 
-void brook_http_reset(brook_connection_t *con) {
-  brook_buffer_t *memory = con->protocol_ctx;
-
-  brook_http_request_t *req = (brook_http_request_t *)(void *)memory->data;
-  memset(req, 0, sizeof(*req));
-
-  req->keep_alive = 1;
+void brook_http_parser_reset(brook_http_parser_t *parser) {
+  parser->state = s_req_start;
+  parser->match_index = 0;
+  parser->sub_state = 0;
+  parser->header_size = 0;
+  parser->header_match_mask = 0;
+  parser->header_state = h_general;
 }

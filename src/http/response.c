@@ -1,7 +1,9 @@
 #include "http/response.h"
+#include "core/connection.h"
 #include "core/globals.h"
 #include "core/logger.h"
 #include "core/types.h"
+#include "http/request.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -21,21 +23,42 @@ static const char *brook_http_reason(uint16_t status_code);
 /*
  * Method will generate a static response
  */
-int brook_http_response_static(brook_connection_t *con, uint16_t status_code, const char *message) {
+int brook_http_response_static(brook_http_request_t *req, uint16_t status_code, const char *message) {
 
+  brook_connection_t *con = req->con;
+
+  // Generate the body
   static char body[BROOK_HTTP_LINE_MAX];
   size_t body_len = snprintf(body, sizeof body, "{\"title\":\"%s\",\"status\":%u,\"detail\":\"%s\"}", brook_http_reason(status_code), status_code, message);
 
-  if (brook_http_send(con, brook_http_response_status_line(status_code)) == BROOK_ERROR ||
-      brook_http_send(con, brook_http_response_header_content_type("application/problem+json")) == BROOK_ERROR ||
-      brook_http_send(con, brook_http_response_header_content_length(body_len)) == BROOK_ERROR ||
-      brook_http_send(con, brook_http_response_header_connection(0)) == BROOK_ERROR ||
-      brook_http_send(con, "\r\n") == BROOK_ERROR) {
+  if (brook_http_send(con, brook_http_response_status_line(status_code)) == BROOK_ERROR) {
     return BROOK_ERROR;
   }
 
-  if (body_len > 0) {
-    return brook_connection_send(con, (const unsigned char *)body, body_len);
+  if (brook_http_send(con, brook_http_response_header_content_type("application/problem+json")) == BROOK_ERROR) {
+    return BROOK_ERROR;
+  }
+
+  if (brook_http_send(con, brook_http_response_header_content_length(body_len)) == BROOK_ERROR) {
+    return BROOK_ERROR;
+  }
+
+  if (brook_http_send(con, brook_http_response_header_connection(req->keep_alive)) == BROOK_ERROR) {
+    return BROOK_ERROR;
+  }
+
+  if (brook_http_send(con, brook_http_response_header_server(SERVER_NAME)) == BROOK_ERROR) {
+    return BROOK_ERROR;
+  }
+
+  // end of header response
+  if (brook_http_send(con, "\r\n") == BROOK_ERROR) {
+    return BROOK_ERROR;
+  }
+
+  // write the body response
+  if (brook_connection_send(con, (const unsigned char *)body, body_len) == BROOK_ERROR) {
+    return BROOK_ERROR;
   }
 
   return BROOK_OK;

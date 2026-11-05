@@ -74,13 +74,8 @@ typedef enum {
 
 typedef struct {
 
-  // Where the current request starts, buffers before this one can be released
-  brook_buffer_t *start_buffer;
-  int start_offset;
-
-  // Next byte to parse, where the parser resumes
-  brook_buffer_t *cursor_buffer;
-  int cursor_offset;
+  brook_buffer_t *cursor;
+  size_t offset;
 
   // General porpose
   brook_http_parser_state_e state;
@@ -96,7 +91,7 @@ typedef struct {
 
 typedef struct {
 
-  brook_http_parser_t parser; // TODO: delete
+  brook_connection_t *con;
 
   brook_http_method_e method;
   brook_str_t url;
@@ -116,6 +111,6 @@ void brook_http_open(brook_connection_t *con);
 void brook_http_on_close(brook_connection_t *con);
 void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len);
 void brook_http_on_drain(brook_connection_t *con);
-void brook_http_reset(brook_connection_t *con);
+void brook_http_parser_reset(brook_http_parser_t *parser);
 
 #endif

@@ -2,6 +2,7 @@
 #include "core/buffer.h"
 #include "core/globals.h"
 #include "core/logger.h"
+#include "core/pool.h"
 #include "core/str.h"
 #include "core/types.h"
 #include "http/request.h"
@@ -125,7 +126,7 @@ static brook_http_err_e brook_http_parse_header_line(brook_http_request_t *req, 
 /*
  * Will iterate a buffer char by char to parse the http message
  */
-brook_http_err_e brook_http_parse(brook_http_request_t *req, brook_buffer_t *buffer, unsigned char *b, size_t len) {
+brook_http_err_e brook_http_parse(brook_http_t *http, brook_buffer_t *buffer, unsigned char *b, size_t len) {
   brook_http_parser_t *parser = &req->parser;
 
   for (size_t i = 0; i < len; i++) {
@@ -160,6 +161,27 @@ brook_http_err_e brook_http_parse(brook_http_request_t *req, brook_buffer_t *buf
     // Protect the header size, stops as soon as the limit is crossed
     if (parser->state < s_req_headers_done && ++parser->header_size > BROOK_HTTP_HEADER_MAX) {
       return BROOK_HTTP_ERR_HEADER_TOO_BIG;
+    }
+
+    // for now assum we dont catch the body
+    // TODO: remove
+    if (parser->state == s_req_headers_done) {
+      parser->state = s_req_done;
+    }
+
+    // One request at a time: stop here, the rest of the buffer stays pending
+    if (parser->state == s_req_done) {
+
+      size_t offset = (size_t)((&b[i] + 1) - buffer->data);
+      if (offset >= buffer->len) { // nada pendente
+        parser->offset = 0;
+        parser->cursor = NULL;
+      } else {
+        parser->offset = (unsigned int)offset;
+        parser->cursor = buffer;
+      }
+
+      break;
     }
   }
 

@@ -6,4 +6,6 @@
 #define BROOK_ERROR -1
 #define BROOK_DONE -2
 
+#define SERVER_NAME "brook"
+
 #endif

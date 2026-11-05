@@ -2,6 +2,7 @@
 #define BROOK_HTTP_RESPONSE_H
 
 #include "core/connection.h"
+#include "http/request.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -17,6 +18,6 @@ char *brook_http_response_header_location(const char *url);
 char *brook_http_response_header_server(const char *name);
 char *brook_http_response_header_cache_control(const char *value);
 
-int brook_http_response_static(brook_connection_t *con, uint16_t status_code, const char *message);
+int brook_http_response_static(brook_http_request_t *req, uint16_t status_code, const char *message);
 
 #endif
