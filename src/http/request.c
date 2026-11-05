@@ -36,7 +36,7 @@ const brook_http_error_t brook_http_errors[BROOK_HTTP_ERR_COUNT] = {
  */
 void brook_http_open(brook_connection_t *con) {
 
-  // Allocate a buffer to context of protocol
+  // wee will set a memory/buffer to work whith static data  of protocol
   brook_buffer_t *memory = brook_buffer_get_free(&con->protocol_ctx);
   if (memory == NULL) {
     brook_log(&logger, L_ERROR, "Can't allocate http context for fd=%d\n", con->fd);
@@ -45,17 +45,17 @@ void brook_http_open(brook_connection_t *con) {
   }
 
   // We need contain this check before compile
-  _Static_assert(sizeof(brook_http_request_t) <= BROOK_POOL_BLOCK_SIZE, "request does not fit in a pool block");
+  _Static_assert(sizeof(brook_http_t) <= BROOK_POOL_BLOCK_SIZE, "request does not fit in a pool block");
 
-  // Will start from zero the http information
-  brook_http_reset(con);
+  // "allocate the parser in memory of http protocol"
+  brook_http_t *http = (brook_http_t *)memory->data;
+  memset(http, 0, sizeof(*http));
 }
 
 /*
  * Method called when connection change protocol or is closed
  */
 void brook_http_on_close(brook_connection_t *con) {
-  // brook_buffer_t *memory = con->protocol_ctx;
   brook_buffer_destroy(con->protocol_ctx);
   con->protocol_ctx = NULL;
 }
@@ -64,8 +64,17 @@ void brook_http_on_close(brook_connection_t *con) {
  * Method called each time connection read data
  */
 void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len) {
+
+  // Get the http struct from memory
   brook_buffer_t *memory = con->protocol_ctx;
-  brook_http_request_t *req = (brook_http_request_t *)(void *)memory->data;
+  brook_http_t *http = (brook_http_t *)(void *)memory->data;
+  brook_http_parser_t *parser = &http->parser;
+
+  // start the request parse will run olny one time per request
+  if (parser->state == s_req_start) {
+    parser->start_buffer = buffer;
+    parser->start_offset = (int)(b - buffer->data);
+  }
 
   // Parse the received data
   brook_http_err_e err = brook_http_parse(req, buffer, b, len);

@@ -1,6 +1,7 @@
 #ifndef BROOK_HTTP_REQUEST_H
 #define BROOK_HTTP_REQUEST_H
 
+#include "core/buffer.h"
 #include "core/connection.h"
 #include "core/str.h"
 #include <stddef.h>
@@ -73,6 +74,14 @@ typedef enum {
 
 typedef struct {
 
+  // Where the current request starts, buffers before this one can be released
+  brook_buffer_t *start_buffer;
+  int start_offset;
+
+  // Next byte to parse, where the parser resumes
+  brook_buffer_t *cursor_buffer;
+  int cursor_offset;
+
   // General porpose
   brook_http_parser_state_e state;
   unsigned int match_index;
@@ -87,7 +96,7 @@ typedef struct {
 
 typedef struct {
 
-  brook_http_parser_t parser;
+  brook_http_parser_t parser; // TODO: delete
 
   brook_http_method_e method;
   brook_str_t url;
@@ -97,6 +106,11 @@ typedef struct {
   unsigned keep_alive : 1;
 
 } brook_http_request_t;
+
+typedef struct {
+  brook_http_parser_t parser;
+  brook_http_request_t request;
+} brook_http_t;
 
 void brook_http_open(brook_connection_t *con);
 void brook_http_on_close(brook_connection_t *con);
