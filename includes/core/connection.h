@@ -41,4 +41,6 @@ int brook_connection_set_protocol(brook_connection_t *con, brook_protocol_t *pro
 void brook_connection_read_start(brook_connection_t *con);
 void brook_connection_read_stop(brook_connection_t *con);
 
+void brook_connection_release_consumed(brook_connection_t *con, brook_buffer_t *buffer);
+
 #endif

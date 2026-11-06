@@ -60,10 +60,7 @@ void brook_http_on_close(brook_connection_t *con) {
   con->protocol_ctx = NULL;
 }
 
-/*
- * Method called each time connection read data
- */
-void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len) {
+static int _brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len) {
   brook_buffer_t *memory = con->protocol_ctx;
   brook_http_t *http = (brook_http_t *)(void *)memory->data;
   brook_http_parser_t *parser = &http->parser;
@@ -87,8 +84,9 @@ void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigne
     brook_connection_read_stop(con);
     if (brook_http_response_static(req, brook_http_errors[error].status, brook_http_errors[error].message) == BROOK_ERROR) {
       brook_connection_destroy(con);
+      return BROOK_ERROR;
     }
-    return;
+    return BROOK_DONE;
   }
 
   // Request parser will restart probably and disable read
@@ -97,8 +95,20 @@ void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigne
     brook_connection_read_stop(con);
     brook_http_parser_reset(parser);
 
+    // TODO: to remove
     brook_http_response_static(req, 200, "recebido");
+
+    return BROOK_DONE;
   }
+
+  return BROOK_OK;
+}
+
+/*
+ * Method called each time connection read data
+ */
+void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len) {
+  _brook_http_on_data(con, buffer, b, len);
 }
 
 /*
@@ -117,12 +127,23 @@ void brook_http_on_drain(brook_connection_t *con) {
 
   // check if we dont contain pendent values to read
   if (parser->cursor != NULL) {
+    brook_connection_release_consumed(con, parser->cursor);
     brook_buffer_t *cur = parser->cursor;
     size_t off = parser->offset;
     parser->cursor = NULL;
     parser->offset = 0;
     brook_debug("http resume pending bytes=%zu offset=%zu fd=%d\n", (size_t)(cur->len - off), off, con->fd);
-    brook_http_on_data(con, cur, cur->data + off, cur->len - off);
+    int rc = _brook_http_on_data(con, cur, cur->data + off, cur->len - off);
+    if (rc != BROOK_OK) {
+      if (rc == BROOK_DONE) {
+        brook_debug("http pending bytes parsed, request complete, waiting response fd=%d\n", con->fd);
+      }
+      // if BROOK_ERROR the connection dont exist
+      // if BROOK_DONE the request is parsed or the server will execute the response so e dont wuant to keep this function whe cant enable read
+      return;
+    }
+  } else {
+    brook_connection_release_consumed(con, NULL);
   }
 
   brook_connection_read_start(con);

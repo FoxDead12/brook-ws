@@ -271,3 +271,15 @@ void brook_connection_read_start(brook_connection_t *con) {
 void brook_connection_read_stop(brook_connection_t *con) {
   brook_poll_del_events(con->slot, POLLIN);
 }
+
+/*
+ * If pointer NULL will release all list if exist a buffer will release to buffer before past
+ */
+void brook_connection_release_consumed(brook_connection_t *con, brook_buffer_t *buffer) {
+  while (con->buffers != NULL && con->buffers != buffer) {
+    brook_debug("release consumed buffer=%p len=%zu fd=%d\n", (void *)con->buffers, (size_t)con->buffers->len, con->fd);
+    if (brook_buffer_pop(&con->buffers) == BROOK_ERROR) {
+      break;
+    }
+  }
+}
