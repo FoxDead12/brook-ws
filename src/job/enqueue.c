@@ -13,6 +13,3 @@ struct brook_job_t {
 int brook_job_enqueue(brook_job_t *job) {
 }
 */
-
-void brook_job_queue_connect() {
-}

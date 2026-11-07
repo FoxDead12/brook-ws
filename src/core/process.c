@@ -1,4 +1,5 @@
 #include "core/process.h"
+#include "beanstalkclient.h"
 #include "core/connection.h"
 #include "core/globals.h"
 #include "core/logger.h"
@@ -33,21 +34,56 @@ int brook_process(void) {
 
   process.pid = getpid();
 
+  brook_connection_set_default_protocol(&http_protocol);
+  brook_http_set_default_middleware(&http_middleware);
+
+  int rc = brook_job_queue_create("", "");
+
+  if (rc == BROOK_ERROR) {
+    return BROOK_ERROR;
+  }
+
   // Memory used by the buffers of the connections
-  if (brook_pool_init_head(&process.pool_head) == BROOK_ERROR) {
+  rc = brook_pool_init_head(&process.pool_head);
+
+  if (rc == BROOK_ERROR) {
     brook_log(&logger, L_ERROR, "Can't initialize the pool of buffers\n");
     return BROOK_ERROR;
   }
 
-  brook_connection_set_default_protocol(&http_protocol);
-  brook_http_set_default_middleware(&http_middleware);
-
   // The listener goes last, only now the process is ready to accept connections
-  if (brook_poll_add(process.socket_fd, POLLIN, (brook_handler_t){.on_read = brook_connection_accept, .on_write = NULL, .on_error = NULL, .ctx = NULL}) == BROOK_ERROR) {
+  rc = brook_poll_add(
+      process.socket_fd,
+      POLLIN,
+      (brook_handler_t){
+          .on_read = brook_connection_accept,
+          .on_write = NULL,
+          .on_error = NULL,
+          .ctx = NULL,
+      });
+
+  if (rc == BROOK_ERROR) {
     brook_log(&logger, L_ERROR, "Can't add the listening socket to the poll\n");
     return BROOK_ERROR;
   }
+
+  rc = brook_poll_add(
+      process.jobs.fd,
+      POLLIN,
+      (brook_handler_t){
+          .on_read = brook_job_queue_on_read,
+          .on_write = brook_job_queue_on_write,
+          .on_error = NULL,
+          .ctx = process.jobs.client,
+      });
+
+  if (rc == BROOK_ERROR) {
+    brook_log(&logger, L_ERROR, "Can't add the listening socket jobs queue to the poll\n");
+    return BROOK_ERROR;
+  }
+
   brook_debug("listening on fd=%d pid=%d\n", process.socket_fd, process.pid);
+  brook_debug("listening on fd=%d pid=%d\n", process.jobs.fd, process.pid);
 
   brook_poll_loop();
 

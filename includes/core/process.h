@@ -4,6 +4,7 @@
 #include "core/connection.h"
 #include "core/poll.h"
 #include "core/pool.h"
+#include "job/queue.h"
 #include <limits.h>
 #include <netinet/tcp.h>
 #include <poll.h>
@@ -23,6 +24,9 @@ typedef struct {
 
   // Variables used only in connection.c
   brook_connection_t conns[POLL_FDS_MAX];
+
+  // Variables used only in jobs/queue.c
+  brook_job_queue_t jobs;
 
 } brook_process_t;
 
