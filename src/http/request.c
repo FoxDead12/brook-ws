@@ -17,6 +17,8 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
+static brook_middleware_t *default_middleware = NULL;
+
 // Status and message sent to the client for each parser error
 const brook_http_error_t brook_http_errors[BROOK_HTTP_ERR_COUNT] = {
     [BROOK_HTTP_ERR_BAD_REQUEST] = {400, "Malformed HTTP request"},
@@ -72,6 +74,7 @@ static int _brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, 
     memset(req, 0, sizeof(*req));
     req->keep_alive = 1;
     req->con = con;
+    req->middleware = default_middleware;
   }
 
   // parser the buffer data looking for a request
@@ -96,7 +99,11 @@ static int _brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, 
     brook_http_parser_reset(parser);
 
     // TODO: to remove
-    brook_http_response_static(req, 200, "recebido");
+    // brook_http_response_static(req, 200, "recebido");
+
+    if (req->middleware != NULL && req->middleware->on_call != NULL) {
+      req->middleware->on_call(req);
+    }
 
     return BROOK_DONE;
   }
@@ -156,4 +163,11 @@ void brook_http_parser_reset(brook_http_parser_t *parser) {
   parser->header_size = 0;
   parser->header_match_mask = 0;
   parser->header_state = h_general;
+}
+
+/*
+ * Only  for the start of worker
+ */
+void brook_http_set_default_middleware(brook_middleware_t *middleware) {
+  default_middleware = middleware;
 }

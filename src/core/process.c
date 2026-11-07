@@ -5,7 +5,9 @@
 #include "core/poll.h"
 #include "core/pool.h"
 #include "core/types.h"
+#include "http/middleware.h"
 #include "http/request.h"
+#include "job/queue.h"
 #include <sys/poll.h>
 #include <unistd.h>
 
@@ -15,6 +17,11 @@ static brook_protocol_t http_protocol = {
     .on_data = brook_http_on_data,
     .on_close = brook_http_on_close,
     .on_drain = brook_http_on_drain,
+};
+
+static brook_middleware_t http_middleware = {
+    .on_call = brook_http_middleware_on_call,
+    .on_finish = brook_http_middleware_on_finish,
 };
 
 /*
@@ -33,6 +40,7 @@ int brook_process(void) {
   }
 
   brook_connection_set_default_protocol(&http_protocol);
+  brook_http_set_default_middleware(&http_middleware);
 
   // The listener goes last, only now the process is ready to accept connections
   if (brook_poll_add(process.socket_fd, POLLIN, (brook_handler_t){.on_read = brook_connection_accept, .on_write = NULL, .on_error = NULL, .ctx = NULL}) == BROOK_ERROR) {

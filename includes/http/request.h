@@ -89,7 +89,14 @@ typedef struct {
 
 } brook_http_parser_t;
 
+typedef struct brook_http_request_s brook_http_request_t;
+
 typedef struct {
+  void (*on_call)(struct brook_http_request_s *req);
+  void (*on_finish)(struct brook_http_request_s *req);
+} brook_middleware_t;
+
+struct brook_http_request_s {
 
   brook_connection_t *con;
 
@@ -100,7 +107,10 @@ typedef struct {
   size_t content_length;
   unsigned keep_alive : 1;
 
-} brook_http_request_t;
+  // middlewares controll
+  brook_middleware_t *middleware;
+  int middleware_current;
+};
 
 typedef struct {
   brook_http_parser_t parser;
@@ -112,5 +122,7 @@ void brook_http_on_close(brook_connection_t *con);
 void brook_http_on_data(brook_connection_t *con, brook_buffer_t *buffer, unsigned char *b, size_t len);
 void brook_http_on_drain(brook_connection_t *con);
 void brook_http_parser_reset(brook_http_parser_t *parser);
+
+void brook_http_set_default_middleware(brook_middleware_t *middleware);
 
 #endif
