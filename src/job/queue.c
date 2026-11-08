@@ -21,7 +21,7 @@ int brook_job_queue_create(const char *host, const char *port) {
 
   bsc *con = bsc_new_w_defaults(host, port, tube, brook_job_queue_on_error, errorstr);
   if (con == NULL) {
-    brook_log(&logger, L_ERROR, "beanstalkd connect %s:%s failed: %s", host, port, errorstr);
+    brook_log(&logger, L_ERROR, "beanstalkd connect %s:%s failed: %s\n", host, port, errorstr);
     return BROOK_ERROR;
   }
 
@@ -30,7 +30,7 @@ int brook_job_queue_create(const char *host, const char *port) {
   process.jobs.client = con;
   process.jobs.njobs = 0;
 
-  brook_debug("beanstalkd connected %s:%s tube=%s fd=%d", host, port, tube, con->fd);
+  brook_debug("beanstalkd connected %s:%s tube=%s fd=%d\n", host, port, tube, con->fd);
   return BROOK_OK;
 }
 
