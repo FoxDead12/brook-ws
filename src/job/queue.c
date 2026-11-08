@@ -14,7 +14,11 @@ static void brook_job_queue_on_error(bsc *con, bsc_error_t error) {
 /*
  * Create a socket/fd related to beanstalkd
  */
-int brook_job_queue_create(const char *host, const char *port) {
+int brook_job_queue_create(void) {
+
+  const brook_config_node_t *beanstalkd = brook_config_get(conf, "beanstalkd");
+  const char *host = brook_config_get_str(beanstalkd, "host", "localhost");
+  const char *port = brook_config_get_str(beanstalkd, "port", "11300");
 
   char errorstr[BSC_ERRSTR_LEN] = {0};
   const char *tube = BSC_DEFAULT_TUBE;

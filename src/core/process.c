@@ -37,7 +37,7 @@ int brook_process(void) {
   brook_connection_set_default_protocol(&http_protocol);
   brook_http_set_default_middleware(&http_middleware);
 
-  int rc = brook_job_queue_create("", "");
+  int rc = brook_job_queue_create();
 
   if (rc == BROOK_ERROR) {
     return BROOK_ERROR;

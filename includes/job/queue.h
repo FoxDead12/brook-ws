@@ -23,7 +23,7 @@ typedef struct {
   int njobs;
 } brook_job_queue_t;
 
-int brook_job_queue_create(const char *host, const char *port);
+int brook_job_queue_create(void);
 void brook_job_queue_on_read(void *ctx);
 void brook_job_queue_on_write(void *ctx);
 
