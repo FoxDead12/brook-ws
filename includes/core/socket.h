@@ -1,11 +1,15 @@
-#ifndef BROOK_SOCKET_H
-#define BROOK_SOCKET_H
+#ifndef SOCKET_H
+#define SOCKET_H
 
 #include "core/types.h"
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdio.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
-int brook_socket(int port);
-int brook_socket_accept(int fd, struct sockaddr *address, socklen_t *len);
-int brook_socket_close(int socket);
+int core_socket_bind(int port);
 
-#endif
+#endif // !SOCKET_H

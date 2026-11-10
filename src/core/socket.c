@@ -1,18 +1,6 @@
 #include "core/socket.h"
-#include "core/types.h"
 
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <signal.h>
-#include <stdio.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-/*
- * Method to create a socket binding to a port in system
- */
-int brook_socket(int port) {
+int core_socket_bind(int port) {
 
   int socket_fd;
   int bit = 1;
@@ -71,24 +59,6 @@ int brook_socket(int port) {
   }
 
   return socket_fd;
+
 }
 
-/*
- * Method to socket accept TCP connections
- */
-int brook_socket_accept(int fd, struct sockaddr *address, socklen_t *len) {
-  int cfd = accept(fd, address, len);
-  if (cfd <= 0) {
-    return BROOK_DONE;
-  } else {
-    return cfd;
-  }
-}
-
-/*
- * Method to close a socket in system
- */
-int brook_socket_close(int socket) {
-  close(socket);
-  return BROOK_OK;
-}
