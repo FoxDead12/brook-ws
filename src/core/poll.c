@@ -31,18 +31,21 @@ int poll_start(void) {
     int n_ready = poll(_fds, _fds_count, -1);
     if (n_ready == -1) {
       logger_debug("poll_start: poll() returned -1 (errno=%d: %s)", errno, strerror(errno));
+      continue;
     }
 
     logger_debug("poll_start: %d fd(s) ready of %d", n_ready, _fds_count);
 
     // iterate each index of fds to check the events
-    for (int i = 0; i < n_ready; i++) {
+    // we iterate from the last index to first because when remove fds dont contain any problem
+    for (int i = _fds_count - 1; i >= 0 && n_ready > 0; i--) {
       // ignore the socket has empty events, this probably will not append but is a safe
       if (_fds[i].revents == 0)
         continue;
 
       // will fire the necessary callbacks to event type
       _poll_dispatch(i);
+      n_ready--;
     }
   }
 
@@ -57,28 +60,37 @@ void _poll_dispatch(int idx) {
   // get reference of handler
   poll_handlers_t *handler = &_handlers[idx];
 
+  // result of handlers
+  int rc = BROOK_OK;
+
   logger_debug("poll_dispatch: idx=%d fd=%d revents=0x%x", idx, _fds[idx].fd, revents);
+
+  // the fd has data to read
+  if (revents & POLLIN && rc == BROOK_OK) {
+    logger_debug("poll_dispatch: idx=%d fd=%d POLLIN -> on_read", idx, _fds[idx].fd);
+    assert(handler->on_read);
+    rc = handler->on_read(handler->ctx);
+  }
+
+  // the fd is available to send/write data
+  if (revents & POLLOUT && rc == BROOK_OK) {
+    logger_debug("poll_dispatch: idx=%d fd=%d POLLOUT -> on_write", idx, _fds[idx].fd);
+    assert(handler->on_write);
+    rc = handler->on_write(handler->ctx);
+  }
 
   // this fd has a problema need be closed
   if (revents & (POLLERR | POLLHUP | POLLNVAL)) {
     logger_debug("poll_dispatch: idx=%d fd=%d error/hangup -> on_close", idx, _fds[idx].fd);
+    rc = BROOK_CLOSE;
+  }
+
+  // the handlers request to close the connection
+  if (rc == BROOK_CLOSE) {
+    logger_debug("poll_dispatch: idx=%d fd=%d BROOK_CLOSE -> on_close", idx, _fds[idx].fd);
     assert(handler->on_close);
     handler->on_close(handler->ctx);
-    return;
-  }
-
-  // the fd has data to read
-  if (revents & POLLIN) {
-    logger_debug("poll_dispatch: idx=%d fd=%d POLLIN -> on_read", idx, _fds[idx].fd);
-    assert(handler->on_read);
-    handler->on_read(handler->ctx);
-  }
-
-  // the fd is available to send/write data
-  if (revents & POLLOUT) {
-    logger_debug("poll_dispatch: idx=%d fd=%d POLLOUT -> on_write", idx, _fds[idx].fd);
-    assert(handler->on_write);
-    handler->on_write(handler->ctx);
+    poll_remove(idx);
   }
 
   return;

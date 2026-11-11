@@ -10,7 +10,6 @@ typedef struct {
   void *ctx;
   int (*on_read)(void *ctx);
   int (*on_write)(void *ctx);
-  int (*on_open)(void *ctx);
   int (*on_close)(void *ctx);
 } poll_handlers_t;
 
