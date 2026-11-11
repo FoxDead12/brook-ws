@@ -3,7 +3,7 @@
 #include "core/poll.h"
 #include <arpa/inet.h>
 #include <stddef.h>
-#define MAX_CONNS POLL_MAX_FD
+#define MAX_CONNS POLL_MAX_FD - 8
 
 /*
  * This is the callbacks this layer will call to layer above run
@@ -18,10 +18,6 @@ typedef struct {
  * The struct of a connection
  */
 typedef struct connection_s {
-
-  // the information the lower level transmit
-  int poll_ctx;
-
   int fd;
   int port;
   char ip[INET_ADDRSTRLEN];
@@ -41,14 +37,27 @@ typedef struct {
 } connection_manager_t;
 
 /*
+ * Srtruct of listner
+ */
+typedef struct {
+  int fd;
+  int accepting;
+} listner_t;
+
+/*
  * All "private" functions
  * */
+connection_t *_connection_acquire(void);
+void _connection_release(connection_t *con);
+
+void _lister_stop_accept(void);
+void _listner_start_accept(void);
 
 /*
  * All "public" functions avaliable to project
  * */
 
-int connection_setup();
+int connection_setup(int fd);
 int connection_accept(void *ctx);
 
 int connection_on_read(void *ctx);

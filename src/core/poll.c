@@ -21,11 +21,13 @@ static int _fds_table[POLL_MAX_FD] = {0};
 
 /*
  * Initial setup of the layer, reset the table of fd -> slot
- * must be called before any poll_add
+ * must be called before any poll_add and is the process will execute
  */
 void poll_setup(void) {
-  for (int i = 0; i < POLL_MAX_FD; i++) {
-    _fds_table[i] = -1;
+  {
+    for (int i = 0; i < POLL_MAX_FD; i++) {
+      _fds_table[i] = -1;
+    }
   }
 }
 
