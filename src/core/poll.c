@@ -106,7 +106,6 @@ void _poll_dispatch(int idx) {
     logger_debug("poll_dispatch: idx=%d fd=%d BROOK_CLOSE -> on_close", idx, _fds[idx].fd);
     assert(handler->on_close);
     handler->on_close(handler->ctx);
-    poll_remove(fd);
   }
 
   return;
