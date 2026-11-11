@@ -1,6 +1,12 @@
 #include "core/socket.h"
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdio.h>
+#include <sys/socket.h>
 
-int core_socket_bind(int port) {
+int socket_bind(int port) {
 
   int socket_fd;
   int bit = 1;
@@ -59,6 +65,4 @@ int core_socket_bind(int port) {
   }
 
   return socket_fd;
-
 }
-

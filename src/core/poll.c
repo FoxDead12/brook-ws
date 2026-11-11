@@ -1,0 +1,160 @@
+#include "core/poll.h"
+#include "core/logger.h"
+#include "core/types.h"
+#include <assert.h>
+#include <errno.h>
+#include <poll.h>
+#include <string.h>
+
+/*
+ * Here is the Layer 1. The polling system who will fire the call to a unknow Layer/logic/entity
+ * this will controll the abuve layers if will recevie work or not this can stop and run the server basicly
+ */
+
+/*
+ * Only this layer will use this static variables
+ */
+static int _fds_count = 0;
+static struct pollfd _fds[POLL_MAX_FD] = {0};
+static poll_handlers_t _handlers[POLL_MAX_FD] = {0};
+
+/*
+ * Start the logic off the layer start listening the OS evetns
+ */
+int poll_start(void) {
+
+  logger_debug("poll_start: loop started (fds=%d)", _fds_count);
+
+  while (1) {
+
+    // will wait for ever for a event
+    int n_ready = poll(_fds, _fds_count, -1);
+    if (n_ready == -1) {
+      logger_debug("poll_start: poll() returned -1 (errno=%d: %s)", errno, strerror(errno));
+    }
+
+    logger_debug("poll_start: %d fd(s) ready of %d", n_ready, _fds_count);
+
+    // iterate each index of fds to check the events
+    for (int i = 0; i < n_ready; i++) {
+      // ignore the socket has empty events, this probably will not append but is a safe
+      if (_fds[i].revents == 0)
+        continue;
+
+      // will fire the necessary callbacks to event type
+      _poll_dispatch(i);
+    }
+  }
+
+  return BROOK_OK;
+}
+
+void _poll_dispatch(int idx) {
+
+  // copy the values is not a problem
+  short revents = _fds[idx].revents;
+
+  // get reference of handler
+  poll_handlers_t *handler = &_handlers[idx];
+
+  logger_debug("poll_dispatch: idx=%d fd=%d revents=0x%x", idx, _fds[idx].fd, revents);
+
+  // this fd has a problema need be closed
+  if (revents & (POLLERR | POLLHUP | POLLNVAL)) {
+    logger_debug("poll_dispatch: idx=%d fd=%d error/hangup -> on_close", idx, _fds[idx].fd);
+    assert(handler->on_close);
+    handler->on_close(handler->ctx);
+    return;
+  }
+
+  // the fd has data to read
+  if (revents & POLLIN) {
+    logger_debug("poll_dispatch: idx=%d fd=%d POLLIN -> on_read", idx, _fds[idx].fd);
+    assert(handler->on_read);
+    handler->on_read(handler->ctx);
+  }
+
+  // the fd is available to send/write data
+  if (revents & POLLOUT) {
+    logger_debug("poll_dispatch: idx=%d fd=%d POLLOUT -> on_write", idx, _fds[idx].fd);
+    assert(handler->on_write);
+    handler->on_write(handler->ctx);
+  }
+
+  return;
+}
+
+/*
+ * Add a new file descriptor to the poll
+ * and will start with event of read
+ */
+int poll_add(int fd, poll_handlers_t handler) {
+
+  // the index will be added the new file descritpor
+  int idx = _fds_count;
+
+  // check if poll contain space to add a fd
+  if (idx >= POLL_MAX_FD) {
+    logger_debug("poll_add: full (max=%d), rejecting fd=%d", POLL_MAX_FD, fd);
+    return BROOK_ERROR;
+  }
+
+  // add new file descritpor to array of poll
+  _fds[idx] = (struct pollfd){
+      .fd = fd,
+      .events = POLLIN,
+      .revents = 0,
+  };
+
+  // copy the receive handler to the handlers array
+  _handlers[idx] = handler;
+
+  // increment the count
+  _fds_count++;
+
+  logger_debug("poll_add: fd=%d added at slot=%d (count=%d)", fd, idx, _fds_count);
+
+  return idx;
+}
+
+/*
+ * Will remove a file descriptor from array
+ */
+void poll_remove(int slot) {
+
+  // get the last index of array
+  int idx_last = _fds_count - 1;
+
+  logger_debug("poll_remove: slot=%d fd=%d (last=%d, count=%d)", slot, _fds[slot].fd, idx_last, _fds_count);
+
+  // check if we are removing last slot or not
+  if (slot != idx_last) {
+    _fds[slot] = _fds[idx_last];
+    _handlers[slot] = _handlers[idx_last];
+  }
+
+  _fds[idx_last].fd = -1;
+  _fds[idx_last].events = 0;
+  _fds[idx_last].revents = 0;
+  memset(&_handlers[idx_last], 0, sizeof(poll_handlers_t));
+
+  return;
+}
+
+/*
+ *  Will update a specific file descritpor event
+ *  we merge the new events to current events
+ */
+void poll_add_events(int slot, short events) {
+  _fds[slot].events |= events;
+  logger_debug("poll_add_events: slot=%d fd=%d +0x%x -> events=0x%x", slot, _fds[slot].fd, events, _fds[slot].events);
+}
+
+/*
+ *  Will update a specific file descritpor event
+ *  we invert the bit mask receive to remove using the & (AND) operator
+ * */
+void poll_remove_events(int slot, short events) {
+  _fds[slot].events &= ~events;
+  logger_debug("poll_remove_events: slot=%d fd=%d -0x%x -> events=0x%x", slot, _fds[slot].fd, events, _fds[slot].events);
+}

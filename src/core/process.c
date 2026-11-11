@@ -1,17 +1,26 @@
 #include "core/process.h"
+#include "core/logger.h"
 #include "core/poll.h"
 #include "core/socket.h"
+#include "core/types.h"
+#include <stdio.h>
+
+// handler to server file descritpor the socket will accept conns
+static poll_handlers_t poll_handler = (poll_handlers_t){
+    .on_read = NULL,
+};
 
 /*
  * The processor is the main of each process/worker
- * here we join and merge all layers will exist and set the necessary 
+ * here we join and merge all layers will exist and set the necessary
  * configurations to code
  */
+int process_start(void) {
 
-int core_process_start (void) {
+  int socket = socket_bind(3001);
 
-  int socket = core_socket_bind(3001);
+  // start the events loop, the worker is now block only working
+  poll_start();
 
-  printf("cirei um fd: %d\n", socket);
-
+  return BROOK_OK;
 }
