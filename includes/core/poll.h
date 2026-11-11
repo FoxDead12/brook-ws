@@ -2,8 +2,6 @@
 #define POLL_H
 #define POLL_MAX_FD 1024
 
-#include "core/types.h"
-
 /*
  * This is the call backs the polling will call each time a event append
  * is the 1 layer the main of everthing
