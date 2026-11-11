@@ -22,12 +22,13 @@ void _poll_dispatch(int idx);
  * All "public" functions avaliable to project
  * */
 
+void poll_setup(void);
 int poll_start(void);
 
 int poll_add(int fd, poll_handlers_t handler);
-void poll_remove(int slot);
+void poll_remove(int fd);
 
-void poll_add_events(int slot, short events);
-void poll_remove_events(int slot, short events);
+void poll_add_events(int fd, short events);
+void poll_remove_events(int fd, short events);
 
 #endif // POLL_H

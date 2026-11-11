@@ -17,6 +17,17 @@
 static int _fds_count = 0;
 static struct pollfd _fds[POLL_MAX_FD] = {0};
 static poll_handlers_t _handlers[POLL_MAX_FD] = {0};
+static int _fds_table[POLL_MAX_FD] = {0};
+
+/*
+ * Initial setup of the layer, reset the table of fd -> slot
+ * must be called before any poll_add
+ */
+void poll_setup(void) {
+  for (int i = 0; i < POLL_MAX_FD; i++) {
+    _fds_table[i] = -1;
+  }
+}
 
 /*
  * Start the logic off the layer start listening the OS evetns
@@ -60,6 +71,9 @@ void _poll_dispatch(int idx) {
   // get reference of handler
   poll_handlers_t *handler = &_handlers[idx];
 
+  // keep the fd, the slot can change when a fd is removed
+  int fd = _fds[idx].fd;
+
   // result of handlers
   int rc = BROOK_OK;
 
@@ -90,7 +104,7 @@ void _poll_dispatch(int idx) {
     logger_debug("poll_dispatch: idx=%d fd=%d BROOK_CLOSE -> on_close", idx, _fds[idx].fd);
     assert(handler->on_close);
     handler->on_close(handler->ctx);
-    poll_remove(idx);
+    poll_remove(fd);
   }
 
   return;
@@ -105,8 +119,8 @@ int poll_add(int fd, poll_handlers_t handler) {
   // the index will be added the new file descritpor
   int idx = _fds_count;
 
-  // check if poll contain space to add a fd
-  if (idx >= POLL_MAX_FD) {
+  // check if poll contain space to add a fd and the fd fits in the table
+  if (idx >= POLL_MAX_FD || fd < 0 || fd >= POLL_MAX_FD) {
     logger_debug("poll_add: full (max=%d), rejecting fd=%d", POLL_MAX_FD, fd);
     return BROOK_ERROR;
   }
@@ -121,34 +135,49 @@ int poll_add(int fd, poll_handlers_t handler) {
   // copy the receive handler to the handlers array
   _handlers[idx] = handler;
 
+  // remember the slot of this fd
+  _fds_table[fd] = idx;
+
   // increment the count
   _fds_count++;
 
   logger_debug("poll_add: fd=%d added at slot=%d (count=%d)", fd, idx, _fds_count);
 
-  return idx;
+  return BROOK_OK;
 }
 
 /*
  * Will remove a file descriptor from array
  */
-void poll_remove(int slot) {
+void poll_remove(int fd) {
+
+  // get the slot of this fd
+  int slot = _fds_table[fd];
+  assert(slot != -1 && _fds[slot].fd == fd);
 
   // get the last index of array
   int idx_last = _fds_count - 1;
 
-  logger_debug("poll_remove: slot=%d fd=%d (last=%d, count=%d)", slot, _fds[slot].fd, idx_last, _fds_count);
+  logger_debug("poll_remove: slot=%d fd=%d (last=%d, count=%d)", slot, fd, idx_last, _fds_count);
 
   // check if we are removing last slot or not
   if (slot != idx_last) {
     _fds[slot] = _fds[idx_last];
     _handlers[slot] = _handlers[idx_last];
+
+    // the fd moved has a new slot
+    _fds_table[_fds[slot].fd] = slot;
   }
+
+  // the fd is no more in the table
+  _fds_table[fd] = -1;
 
   _fds[idx_last].fd = -1;
   _fds[idx_last].events = 0;
   _fds[idx_last].revents = 0;
   memset(&_handlers[idx_last], 0, sizeof(poll_handlers_t));
+
+  _fds_count--;
 
   return;
 }
@@ -157,16 +186,20 @@ void poll_remove(int slot) {
  *  Will update a specific file descritpor event
  *  we merge the new events to current events
  */
-void poll_add_events(int slot, short events) {
+void poll_add_events(int fd, short events) {
+  int slot = _fds_table[fd];
+  assert(slot != -1 && _fds[slot].fd == fd);
   _fds[slot].events |= events;
-  logger_debug("poll_add_events: slot=%d fd=%d +0x%x -> events=0x%x", slot, _fds[slot].fd, events, _fds[slot].events);
+  logger_debug("poll_add_events: slot=%d fd=%d +0x%x -> events=0x%x", slot, fd, events, _fds[slot].events);
 }
 
 /*
  *  Will update a specific file descritpor event
  *  we invert the bit mask receive to remove using the & (AND) operator
  * */
-void poll_remove_events(int slot, short events) {
+void poll_remove_events(int fd, short events) {
+  int slot = _fds_table[fd];
+  assert(slot != -1 && _fds[slot].fd == fd);
   _fds[slot].events &= ~events;
-  logger_debug("poll_remove_events: slot=%d fd=%d -0x%x -> events=0x%x", slot, _fds[slot].fd, events, _fds[slot].events);
+  logger_debug("poll_remove_events: slot=%d fd=%d -0x%x -> events=0x%x", slot, fd, events, _fds[slot].events);
 }
