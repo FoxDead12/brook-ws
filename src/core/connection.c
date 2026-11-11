@@ -118,10 +118,13 @@ int connection_on_close(void *ctx) {
   // close socket
   close(con->fd);
 
+  // remove the fd from poll event
+  poll_remove(con->fd);
+
   // free the connection struct give to list
   _connection_release(con);
 
-  // make the polling start again
+  // make the polling start again if was stoped
   _listner_start_accept();
 
   return BROOK_OK;
