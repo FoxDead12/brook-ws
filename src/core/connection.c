@@ -94,6 +94,11 @@ int connection_on_read(void *ctx) {
   connection_t *con = (connection_t *)ctx;
   logger_debug("connection_on_read: fd=%d %s:%d", con->fd, con->ip, con->port);
 
+  char buffer[4096] = {0};
+  read(con->fd, &buffer, 4096);
+
+  printf("read: %s\n", buffer);
+
   return BROOK_OK;
 }
 
@@ -112,14 +117,15 @@ int connection_on_write(void *ctx) {
  */
 int connection_on_close(void *ctx) {
   connection_t *con = (connection_t *)ctx;
+  int fd = con->fd;
 
   logger_debug("connection_on_close: closing fd=%d %s:%d", con->fd, con->ip, con->port);
 
-  // close socket
-  close(con->fd);
-
   // remove the fd from poll event
-  poll_remove(con->fd);
+  poll_remove(fd);
+
+  // close socket
+  close(fd);
 
   // free the connection struct give to list
   _connection_release(con);
