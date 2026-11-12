@@ -3,16 +3,15 @@
 #include "core/poll.h"
 #include <arpa/inet.h>
 #include <stddef.h>
-#define MAX_CONNS POLL_MAX_FD - 8
+#define MAX_CONNS (POLL_MAX_FD - 8)
 
-/*
- * This is the callbacks this layer will call to layer above run
- * we now the above layer is the protocol
- */
+struct connection_s;
+
 typedef struct {
-  int (*on_open)(void *ctx);
-  int (*on_close)(void *ctx);
-} connection_protocoll_t;
+  int (*on_data)(struct connection_s *con);
+  int (*on_write)(struct connection_s *con);
+  int (*on_close)(struct connection_s *con);
+} protocol_t;
 
 /*
  * The struct of a connection
@@ -22,9 +21,9 @@ typedef struct connection_s {
   int port;
   char ip[INET_ADDRSTRLEN];
 
-  // callbacks to above layer
-  connection_protocoll_t protocol;
-
+  // the connection will caller someone whe receive events
+  protocol_t *protocol;
+  void *protocol_ctx;
 } connection_t;
 
 /*
@@ -57,7 +56,7 @@ void _listner_start_accept(void);
  * All "public" functions avaliable to project
  * */
 
-int connection_setup(int fd);
+int connection_setup(int fd, protocol_t *protocol);
 int connection_accept(void *ctx);
 
 int connection_on_read(void *ctx);

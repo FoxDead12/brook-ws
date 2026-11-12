@@ -16,6 +16,7 @@
  */
 
 static connection_manager_t _connections;
+static protocol_t *_default_protocol;
 
 // the necessary of listner when socket receive connections
 static listner_t _listener;
@@ -79,6 +80,8 @@ int connection_accept(void *ctx) {
   *con = (connection_t){
       .fd = fd,
       .port = ntohs(address.sin_port),
+      .protocol = _default_protocol,
+      .protocol_ctx = NULL,
   };
   inet_ntop(AF_INET, &address.sin_addr, con->ip, INET_ADDRSTRLEN);
 
@@ -99,6 +102,10 @@ int connection_on_read(void *ctx) {
 
   printf("read: %s\n", buffer);
 
+  if (con->protocol->on_data) {
+    con->protocol->on_data(con);
+  }
+
   return BROOK_OK;
 }
 
@@ -108,6 +115,10 @@ int connection_on_read(void *ctx) {
 int connection_on_write(void *ctx) {
   connection_t *con = (connection_t *)ctx;
   logger_debug("connection_on_write: fd=%d %s:%d", con->fd, con->ip, con->port);
+
+  if (con->protocol->on_write) {
+    con->protocol->on_write(con);
+  }
 
   return BROOK_OK;
 }
@@ -120,6 +131,10 @@ int connection_on_close(void *ctx) {
   int fd = con->fd;
 
   logger_debug("connection_on_close: closing fd=%d %s:%d", con->fd, con->ip, con->port);
+
+  if (con->protocol->on_close) {
+    con->protocol->on_close(con);
+  }
 
   // remove the fd from poll event
   poll_remove(fd);
@@ -140,9 +155,10 @@ int connection_on_close(void *ctx) {
  * the process wil call this method is the initial setup for connection layer
  * will define the defaults and start the necessary memory
  */
-int connection_setup(int fd) {
+int connection_setup(int fd, protocol_t *protocol) {
 
   assert(fd >= 0);
+  assert(protocol != NULL);
 
   logger_debug("connection_setup: listener fd=%d, max connections=%d", fd, MAX_CONNS);
 
@@ -170,6 +186,11 @@ int connection_setup(int fd) {
     }
 
     logger_debug("connection_setup: listener registered at fd=%d", fd);
+  }
+
+  // protocol default
+  {
+    _default_protocol = protocol;
   }
 
   return BROOK_OK;
