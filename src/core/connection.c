@@ -14,7 +14,6 @@
  * Here is the Layer 2. Here we are in connection level, the con will controll is state and
  * if necessary the poll slot of con.
  */
-
 static connection_manager_t _connections;
 static protocol_t *_default_protocol;
 
