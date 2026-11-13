@@ -97,8 +97,23 @@ int connection_on_read(void *ctx) {
   logger_debug("connection_on_read: fd=%d %s:%d", con->fd, con->ip, con->port);
 
   char buffer[4096] = {0};
-  read(con->fd, &buffer, 4096);
 
+  // read data from OS socket file
+  ssize_t n = read(con->fd, &buffer, 4096);
+  if (n == 0) {
+    return BROOK_CLOSE;
+  } else if (n == -1) {
+
+    // if error is of this type we will try again
+    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+      return BROOK_DONE;
+    }
+
+    return BROOK_CLOSE;
+  }
+
+  poll_remove_events(con->fd, POLLIN);
+  printf("b: %ld\n", b);
   printf("read: %s\n", buffer);
 
   if (con->protocol->on_data) {

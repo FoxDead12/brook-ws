@@ -5,7 +5,7 @@
 #include "core/types.h"
 #include <stdio.h>
 
-static protocol_t http = (protocol_t){
+static protocol_t http = {
     .on_data = NULL,
     .on_write = NULL,
     .on_close = NULL,

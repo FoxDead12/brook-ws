@@ -73,9 +73,6 @@ void _poll_dispatch(int idx) {
   // get reference of handler
   poll_handlers_t *handler = &_handlers[idx];
 
-  // keep the fd, the slot can change when a fd is removed
-  int fd = _fds[idx].fd;
-
   // result of handlers
   int rc = BROOK_OK;
 
@@ -96,7 +93,7 @@ void _poll_dispatch(int idx) {
   }
 
   // this fd has a problema need be closed
-  if (revents & (POLLERR | POLLHUP | POLLNVAL)) {
+  if (revents & POLL_REV_CLOSE) {
     logger_debug("poll_dispatch: idx=%d fd=%d error/hangup -> on_close", idx, _fds[idx].fd);
     rc = BROOK_CLOSE;
   }
@@ -129,7 +126,7 @@ int poll_add(int fd, poll_handlers_t handler) {
   // add new file descritpor to array of poll
   _fds[idx] = (struct pollfd){
       .fd = fd,
-      .events = POLLIN,
+      .events = POLLIN | POLL_EV_RDHUP,
       .revents = 0,
   };
 

@@ -16,6 +16,21 @@ typedef struct {
   size_t chunk_amount; // the number of chunks/nodes exist
   chunk_t *chunk;      // linked list of chunks allocated in memory
   chunk_t *free;       // a linked list to all free chunks/nodes
+  size_t total;
 } pool_t;
+
+/*
+ * All "private" functions
+ * */
+int _pool_grow(pool_t *pool);
+
+/*
+ * All "public" functions avaliable to project
+ * */
+int pool_alloc(pool_t *pool, size_t size, size_t amount);
+int pool_free(pool_t *pool);
+
+void *pool_acquire(pool_t *pool);
+void pool_release(pool_t *pool, void *ctx);
 
 #endif // !POOL_H
