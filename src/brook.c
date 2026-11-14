@@ -16,7 +16,7 @@ int main(void) {
 #elif defined(__APPLE__) && defined(__MACH__)
   /* macOS */
   // init the logger for this proccess
-  logger_init("/Users/dxavier/Library/Logs/BrookWs/");
+  logger_init("/Users/dx3/Library/Logs/BrookWs/");
 #else
 #error "unsupported platform"
 #endif

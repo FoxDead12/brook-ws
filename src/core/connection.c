@@ -1,6 +1,8 @@
 #include "core/connection.h"
+#include "core/buffer.h"
 #include "core/logger.h"
 #include "core/poll.h"
+#include "core/pool.h"
 #include "core/types.h"
 #include <assert.h>
 #include <errno.h>
@@ -14,7 +16,13 @@
  * Here is the Layer 2. Here we are in connection level, the con will controll is state and
  * if necessary the poll slot of con.
  */
+// allocate the buffers space in memory
+static pool_t _buffers_pool;
+
+// the connections manager will store the active conns in memory
 static connection_manager_t _connections;
+
+// the default callbacks to a protocol
 static protocol_t *_default_protocol;
 
 // the necessary of listner when socket receive connections
@@ -112,8 +120,7 @@ int connection_on_read(void *ctx) {
     return BROOK_CLOSE;
   }
 
-  poll_remove_events(con->fd, POLLIN);
-  printf("b: %ld\n", b);
+  printf("b: %ld\n", n);
   printf("read: %s\n", buffer);
 
   if (con->protocol->on_data) {
@@ -175,6 +182,12 @@ int connection_setup(int fd, protocol_t *protocol) {
   assert(protocol != NULL);
 
   logger_debug("connection_setup: listener fd=%d, max connections=%d", fd, MAX_CONNS);
+
+  // allocate the default memory
+  {
+    // allocate in memory +/- 1Mb for the buffers in start
+    pool_alloc(&_buffers_pool, sizeof(buffer_t), 256);
+  }
 
   // setup the connections manager memory
   {
