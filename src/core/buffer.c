@@ -3,6 +3,8 @@
 #include "core/pool.h"
 #include <assert.h>
 #include <stddef.h>
+#include <string.h>
+#include <time.h>
 
 void chain_setup(chain_t *chain, pool_t *pool) {
   *chain = (chain_t){
@@ -12,6 +14,19 @@ void chain_setup(chain_t *chain, pool_t *pool) {
       .tail = NULL,
       .total = 0,
   };
+}
+
+void chain_free(chain_t *chain) {
+  while (chain->head) {
+
+    buffer_t *tmp = chain->head;
+    chain->head = chain->head->next;
+
+    pool_release(chain->pool, tmp);
+  }
+  pool_t *pool = chain->pool;
+  memset(chain, 0, sizeof(chain_t));
+  chain->pool = pool;
 }
 
 /*

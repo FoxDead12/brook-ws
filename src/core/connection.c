@@ -130,10 +130,15 @@ int connection_on_read(void *ctx) {
   // set the buffers read
   chain_commit(&con->rbuffer, n);
 
-  printf("read: %s\n", buffer->data);
-
+  // now pass the work to protocol
   if (con->protocol->on_data) {
-    con->protocol->on_data(con);
+    // now pass the work to up layer
+    int rc = con->protocol->on_data(con);
+
+    // check if ok or not
+    if (rc != BROOK_OK) {
+      return rc;
+    }
   }
 
   return BROOK_OK;
@@ -165,6 +170,9 @@ int connection_on_close(void *ctx) {
   if (con->protocol->on_close) {
     con->protocol->on_close(con);
   }
+
+  chain_free(&con->rbuffer);
+  chain_free(&con->wbuffer);
 
   // remove the fd from poll event
   poll_remove(fd);

@@ -23,6 +23,8 @@ typedef struct {
  * All "public" functions avaliable to project
  * */
 void chain_setup(chain_t *chain, pool_t *pool);
+void chain_free(chain_t *chain);
+
 buffer_t *chain_acquire(chain_t *chain);
 
 void chain_commit(chain_t *chain, size_t n);
