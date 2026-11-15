@@ -92,6 +92,10 @@ int connection_accept(void *ctx) {
   };
   inet_ntop(AF_INET, &address.sin_addr, con->ip, INET_ADDRSTRLEN);
 
+  // create the chainst to connection
+  chain_setup(&con->rbuffer, &_buffers_pool);
+  chain_setup(&con->wbuffer, &_buffers_pool);
+
   logger_debug("connection_accept: new connection fd=%d from %s:%d (free=%zu)", fd, con->ip, con->port, _connections.free_count);
 
   return BROOK_OK;
@@ -104,10 +108,11 @@ int connection_on_read(void *ctx) {
   connection_t *con = (connection_t *)ctx;
   logger_debug("connection_on_read: fd=%d %s:%d", con->fd, con->ip, con->port);
 
-  char buffer[4096] = {0};
-
   // read data from OS socket file
-  ssize_t n = read(con->fd, &buffer, 4096);
+  buffer_t *buffer = chain_acquire(&con->rbuffer);
+  ssize_t n = read(con->fd, &buffer->data, BUFFER_SIZE - buffer->len);
+
+  // check if error append
   if (n == 0) {
     return BROOK_CLOSE;
   } else if (n == -1) {
@@ -117,11 +122,15 @@ int connection_on_read(void *ctx) {
       return BROOK_DONE;
     }
 
+    logger_debug("connection_on_read: read() failed fd=%d (errno=%d: %s), closing", con->fd, errno,
+                 strerror(errno));
     return BROOK_CLOSE;
   }
 
-  printf("b: %ld\n", n);
-  printf("read: %s\n", buffer);
+  // set the buffers read
+  chain_commit(&con->rbuffer, n);
+
+  printf("read: %s\n", buffer->data);
 
   if (con->protocol->on_data) {
     con->protocol->on_data(con);

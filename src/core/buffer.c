@@ -1,7 +1,18 @@
 #include "core/buffer.h"
+#include "core/logger.h"
 #include "core/pool.h"
 #include <assert.h>
 #include <stddef.h>
+
+void chain_setup(chain_t *chain, pool_t *pool) {
+  *chain = (chain_t){
+      .pool = pool,
+      .count = 0,
+      .head = NULL,
+      .tail = NULL,
+      .total = 0,
+  };
+}
 
 /*
  * will get a buffer were contain space to write more in memory
@@ -18,6 +29,7 @@ buffer_t *chain_acquire(chain_t *chain) {
 
   // is possible don't get the buffer
   if (new == NULL) {
+    logger_error("chain_acquire: pool_acquire failed chain=%p", (void *)chain);
     return NULL;
   }
 
@@ -35,6 +47,9 @@ buffer_t *chain_acquire(chain_t *chain) {
   // increment the buffers count
   chain->count++;
 
+  logger_debug("chain_acquire: chain=%p new buffer=%p count=%zu", (void *)chain, (void *)new,
+               (size_t)chain->count);
+
   return new;
 }
 
@@ -46,11 +61,15 @@ void chain_commit(chain_t *chain, size_t n) {
   assert(chain->tail->len + n <= BUFFER_SIZE);
   chain->tail->len += n;
   chain->total += n;
+
+  logger_debug("chain_commit: chain=%p n=%zu tail_len=%zu total=%zu", (void *)chain, n,
+               (size_t)chain->tail->len, (size_t)chain->total);
 }
 
 void chain_consume(chain_t *chain, size_t n) {
-
   assert(n <= chain->total);
+
+  logger_debug("chain_consume: chain=%p n=%zu total=%zu", (void *)chain, n, (size_t)chain->total);
 
   // remove the bytes discarded
   chain->total -= n;
@@ -87,6 +106,9 @@ void chain_consume(chain_t *chain, size_t n) {
 
       // remove the numb of blocks
       chain->count--;
+
+      logger_debug("chain_consume: chain=%p released buffer=%p count=%zu", (void *)chain,
+                   (void *)buffer, (size_t)chain->count);
     }
   }
 }

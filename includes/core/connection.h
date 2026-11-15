@@ -1,5 +1,6 @@
 #ifndef CONNECTION_H
 #define CONNECTION_H
+#include "core/buffer.h"
 #include "core/poll.h"
 #include <arpa/inet.h>
 #include <stddef.h>
@@ -20,6 +21,9 @@ typedef struct connection_s {
   int fd;
   int port;
   char ip[INET_ADDRSTRLEN];
+
+  chain_t rbuffer;
+  chain_t wbuffer;
 
   // the connection will caller someone whe receive events
   protocol_t *protocol;

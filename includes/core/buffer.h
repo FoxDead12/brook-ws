@@ -19,4 +19,13 @@ typedef struct {
   size_t count;   // number of buffers
 } chain_t;
 
+/*
+ * All "public" functions avaliable to project
+ * */
+void chain_setup(chain_t *chain, pool_t *pool);
+buffer_t *chain_acquire(chain_t *chain);
+
+void chain_commit(chain_t *chain, size_t n);
+void chain_consume(chain_t *chain, size_t n);
+
 #endif // BUFFER_H

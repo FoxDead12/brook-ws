@@ -1,6 +1,8 @@
 #include "core/pool.h"
+#include "core/logger.h"
 #include "core/types.h"
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,6 +13,8 @@ int pool_alloc(pool_t *pool, size_t size, size_t amount) {
     size = sizeof(chunk_t);
   }
 
+  size = (size + _Alignof(chunk_t) - 1) & ~(_Alignof(chunk_t) - 1);
+
   // set the values of struct
   *pool = (pool_t){
       .chunk_size = size,
@@ -20,10 +24,14 @@ int pool_alloc(pool_t *pool, size_t size, size_t amount) {
       .chunk = NULL,
   };
 
+  logger_debug("pool_alloc: chunk_size=%zu amount=%zu", pool->chunk_size, pool->chunk_amount);
+
   return _pool_grow(pool);
 }
 
 int pool_free(pool_t *pool) {
+
+  logger_debug("pool_free: pool=%p total=%zu", (void *)pool, pool->total);
 
   // dealocate all chains
   chunk_t *chunk = pool->chunk;
@@ -46,6 +54,8 @@ int _pool_grow(pool_t *pool) {
 
   // check if realy OS allocate the memory
   if (new_chunk == NULL) {
+    logger_error("_pool_grow: malloc failed (chunk_size=%zu amount=%zu)", pool->chunk_size,
+                 pool->chunk_amount);
     return BROOK_ERROR;
   }
 
@@ -54,17 +64,20 @@ int _pool_grow(pool_t *pool) {
   pool->chunk = new_chunk;
 
   // wee need move because the first bytes are reserved for the struct to point to next chunk
-  char *free_space = (char *)new_chunk + sizeof(chunk_t);
+  void *free_space = (char *)new_chunk + sizeof(chunk_t);
 
   // set the new free chunks allocated
   for (size_t i = 0; i < pool->chunk_amount; i++) {
-    chunk_t *free_new = (chunk_t *)(free_space + (pool->chunk_size * i));
+    chunk_t *free_new = (chunk_t *)(void *)((char *)free_space + (pool->chunk_size * i));
     free_new->next = pool->free;
     pool->free = free_new;
   }
 
   // a counter if in need controll for feature
   pool->total += pool->chunk_amount;
+
+  logger_debug("_pool_grow: pool=%p added=%zu total=%zu", (void *)pool, pool->chunk_amount,
+               pool->total);
 
   return BROOK_OK;
 }
@@ -75,6 +88,7 @@ void *pool_acquire(pool_t *pool) {
   if (pool->free == NULL) {
     // increment the pool chunks
     // TODO: put a limmit of grow i can make
+    logger_debug("pool_acquire: pool=%p empty, growing", (void *)pool);
     if (_pool_grow(pool) == BROOK_ERROR) {
       return NULL;
     }
@@ -87,6 +101,8 @@ void *pool_acquire(pool_t *pool) {
   // clean memory is safe fot who will use
   memset(free, 0, pool->chunk_size);
 
+  logger_debug("pool_acquire: pool=%p chunk=%p", (void *)pool, (void *)free);
+
   return free;
 }
 
@@ -94,6 +110,8 @@ void pool_release(pool_t *pool, void *ctx) {
 
   // intrepert was a chunk
   chunk_t *chunk = (chunk_t *)ctx;
+
+  logger_debug("pool_release: pool=%p chunk=%p", (void *)pool, ctx);
 
   // clean the memory
   memset(chunk, 0, pool->chunk_size);
