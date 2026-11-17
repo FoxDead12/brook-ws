@@ -25,4 +25,10 @@ int str_buffer_eq(const str_buffer_t *s, const char *lit, size_t n);
 /* writes the token to stdout, no newline */
 void str_buffer_print(const str_buffer_t *s);
 
+/*
+ * Copies at most cap-1 bytes of the token to dst ('\0' terminated) and returns how many.
+ * Only meant for debug logs (a bounded copy on the caller's stack, the token is not kept).
+ */
+size_t str_buffer_peek(const str_buffer_t *s, char *dst, size_t cap);
+
 #endif // !STR_H

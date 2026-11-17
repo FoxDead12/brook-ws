@@ -284,13 +284,6 @@ int http_parser_on_data(http_t *http) {
 int _http_parser_on_char(http_t *http) {
 
   http_parser_t *parser = &http->parser;
-  connection_t *con = http->con;
-
-  buffer_t *buffer = parser->cursor;
-  size_t index = parser->cursor_offset;
-
-  // get the current active char
-  unsigned char c = buffer->data[index];
 
   // handle the state of parcer
   switch (parser->state) {
@@ -590,6 +583,39 @@ static int header_value_end(http_parser_t *parser, http_headers_in_t *in) {
   }
 }
 
+#ifdef BROOK_DEBUG
+/*
+ * Debug log of a header whose value was just read. Tokens are copied (bounded, on the
+ * stack) only to be printed in one log line, they are not stored anywhere else.
+ */
+static void log_header_value(const http_parser_t *parser, http_headers_in_t *in) {
+  unsigned state = parser->header_state;
+  char text[96];
+
+  switch (state) {
+  case h_content_length:
+    logger_debug("http header: content-length=%zu", in->content_length_n);
+    break;
+  case h_connection:
+    logger_debug("http header: connection keep_alive=%u", (unsigned)in->keep_alive);
+    break;
+  case h_transfer_encoding:
+    logger_debug("http header: transfer-encoding present");
+    break;
+  case h_general:
+    break; // not a header the server keeps
+  default: {
+    const str_buffer_t *v = header_slot(in, state);
+    size_t n = str_buffer_peek(v, text, sizeof text);
+    logger_debug("http header: %s=[%s]%s (len=%u)", header_names[state].name, text, n < v->len ? "..." : "", v->len);
+  }
+  }
+}
+#define LOG_HEADER_VALUE(parser, in) log_header_value((parser), (in))
+#else
+#define LOG_HEADER_VALUE(parser, in) ((void)0)
+#endif
+
 /*
  * The empty line after the headers: checks the request as a whole and decides what
  * comes next, the body (Content-Length bytes) or nothing (s_req_done).
@@ -730,6 +756,8 @@ int _http_parser_header_value(http_t *http) {
     int rc = header_value_end(parser, &req->headers_in);
     if (rc != BROOK_HTTP_OK)
       return rc;
+
+    LOG_HEADER_VALUE(parser, &req->headers_in);
 
     parser->state = s_req_header_field;
     parser->header_state = h_general;

@@ -63,3 +63,29 @@ void str_buffer_print(const str_buffer_t *s) {
     left -= c;
   }
 }
+
+size_t str_buffer_peek(const str_buffer_t *s, char *dst, size_t cap) {
+  size_t done = 0;
+
+  if (cap == 0)
+    return 0;
+
+  const buffer_t *b = s->b;
+  size_t off = s->start;
+  size_t left = s->len;
+  const unsigned char *p;
+
+  while (left && done < cap - 1) {
+    size_t want = left < cap - 1 - done ? left : cap - 1 - done;
+    size_t c = str_chunk(&b, &off, want, &p);
+    if (c == 0)
+      break;
+
+    memcpy(dst + done, p, c);
+    done += c;
+    left -= c;
+  }
+
+  dst[done] = '\0';
+  return done;
+}
