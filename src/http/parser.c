@@ -367,9 +367,6 @@ int _http_parser_url(http_t *http) {
   } else if (parser->sub_state == 0 && (ch == ' ' || ch == '?')) {
     parser->state = (ch == ' ') ? s_req_minor : s_req_params;
     return BROOK_HTTP_OK;
-  } else if (url->b != buffer) {
-    // str_buffer_t references a single buffer, so the url can't cross to the next one
-    return BROOK_HTTP_ERR_URL_TOO_LONG;
   }
 
   if (!uri_char(parser, ch))
@@ -404,9 +401,6 @@ int _http_parser_params(http_t *http) {
   if (q->len == 0) {
     q->b = buffer;
     q->start = index;
-  } else if (q->b != buffer) {
-    // str_buffer_t references a single buffer, so the query can't cross to the next one
-    return BROOK_HTTP_ERR_URL_TOO_LONG;
   }
 
   // query = *( pchar / "/" / "?" ), so '?' is the one extra char over the path
