@@ -25,6 +25,8 @@ int http_on_open(connection_t *con) {
 
   // the struct need to now how is the connection is associated
   http->con = con;
+
+  // reset the request memory
   http_parser_reset(http);
 
   return BROOK_OK;
@@ -43,6 +45,7 @@ int http_on_data(connection_t *con) {
 
   if (rc == BROOK_DONE) {
     // request was parsed
+
   } else if (rc != BROOK_OK) {
     // TODO: will fire the error
   }
