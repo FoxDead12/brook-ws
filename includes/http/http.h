@@ -34,7 +34,6 @@ typedef enum {
 
   s_req_header_field,
   s_req_header_value,
-  s_req_headers_done,
 
   s_req_body,
   s_req_done

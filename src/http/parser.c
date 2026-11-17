@@ -166,8 +166,38 @@ static const char tokens[256] = {
  *   unreserved (ALPHA DIGIT - . _ ~) / sub-delims (! $ & ' ( ) * + , ; =) / ":" / "@" / "/"
  * '%' (needs 2 hex digits) and '?' (query only) are handled by the parser. */
 static const uint8_t url_chars[32] = {
-    0x00, 0x00, 0x00, 0x00, 0xd2, 0xff, 0xff, 0x2f, 0xff, 0xff, 0xff, 0x87, 0xfe, 0xff, 0xff, 0x47,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0xd2,
+    0xff,
+    0xff,
+    0x2f,
+    0xff,
+    0xff,
+    0xff,
+    0x87,
+    0xfe,
+    0xff,
+    0xff,
+    0x47,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
 };
 static const char http_minor[] = "HTTP/1.1";
 static const char *methods[] = {
@@ -279,9 +309,9 @@ int _http_parser_on_char(http_t *http) {
     return _http_parser_header_value(http);
   case s_req_body:
     return _http_parser_body(http);
-  case s_req_headers_done:
   case s_req_done:
-    break;
+    // the request is finished: the caller has to reset the parser before feeding more bytes
+    return BROOK_DONE;
   }
 
   return BROOK_OK;
@@ -431,6 +461,7 @@ bad:
 int _http_parser_minor(http_t *http) {
 
   PARSER_CTX(http);
+  (void)req;
 
   unsigned char ch = buffer->data[index];
 
