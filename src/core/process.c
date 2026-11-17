@@ -6,6 +6,7 @@
 #include <stdio.h>
 
 static protocol_t http = {
+    .on_open = NULL,
     .on_data = NULL,
     .on_write = NULL,
     .on_close = NULL,

@@ -9,6 +9,7 @@
 struct connection_s;
 
 typedef struct {
+  int (*on_open)(struct connection_s *con);
   int (*on_data)(struct connection_s *con);
   int (*on_write)(struct connection_s *con);
   int (*on_close)(struct connection_s *con);

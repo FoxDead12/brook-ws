@@ -98,6 +98,17 @@ int connection_accept(void *ctx) {
 
   logger_debug("connection_accept: new connection fd=%d from %s:%d (free=%zu)", fd, con->ip, con->port, _connections.free_count);
 
+  // call the protocol
+  if (con->protocol->on_open) {
+    int rc = con->protocol->on_open(con);
+
+    // check if ok or not
+    // TODO: here probably if error append need undu everething because poll will not manage this
+    if (rc != BROOK_OK) {
+      return rc;
+    }
+  }
+
   return BROOK_OK;
 }
 
