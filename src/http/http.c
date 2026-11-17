@@ -5,6 +5,7 @@
 #include "core/types.h"
 #include "http/parser.h"
 #include <stdio.h>
+#include <string.h>
 
 /*
  * Here is Layer 3 the protocol layer. here he will implemente the logic of the http protocol
@@ -24,6 +25,7 @@ int http_on_open(connection_t *con) {
 
   // the struct need to now how is the connection is associated
   http->con = con;
+  http_parser_reset(http);
 
   return BROOK_OK;
 }

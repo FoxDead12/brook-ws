@@ -181,13 +181,18 @@ static const struct {
   const char *name;
   uint8_t len;
 } header_names[] = {
-    HEADER("host"),
-    HEADER("connection"),
-    HEADER("content-length"),
-    HEADER("content_type"),
-    HEADER("content_range"),
-    HEADER("user_agent"),
+    [h_host] = HEADER("host"),
+    [h_connection] = HEADER("connection"),
+    [h_content_length] = HEADER("content-length"),
+    [h_content_type] = HEADER("content-type"),
+    [h_content_range] = HEADER("content-range"),
+    [h_user_agent] = HEADER("user-agent"),
+    [h_transfer_encoding] = HEADER("transfer-encoding"),
 };
+
+// every known header needs a name, and one bit of the 32-bit masks
+_Static_assert(sizeof(header_names) / sizeof(header_names[0]) == h_general, "header_names must match http_header_e");
+_Static_assert(h_general <= 32, "header masks are 32 bits");
 
 /*
  * Will get data from connection rbuffer to parse the HTTP request
@@ -224,6 +229,7 @@ int http_parser_on_data(http_t *http) {
         return rc;
 
       parser->cursor_offset++;
+      http->req.bytes++;
 
       if (parser->state == s_req_done)
         return BROOK_DONE;
@@ -268,9 +274,12 @@ int _http_parser_on_char(http_t *http) {
   case s_req_minor:
     return _http_parser_minor(http);
   case s_req_header_field:
+    return _http_parser_header_field(http);
   case s_req_header_value:
-  case s_req_headers_done:
+    return _http_parser_header_value(http);
   case s_req_body:
+    return _http_parser_body(http);
+  case s_req_headers_done:
   case s_req_done:
     break;
   }
@@ -446,4 +455,331 @@ int _http_parser_minor(http_t *http) {
   }
 
   return BROOK_HTTP_OK;
+}
+
+/* Headers that must not repeat: Host (RFC 9112 3.2), Content-Length (9112 6.3) and Content-Type (9110 8.3) */
+#define HEADER_SINGLETON ((1u << h_host) | (1u << h_content_length) | (1u << h_content_type))
+
+/*
+ * Where the value of a known header is stored as a reference. Headers whose value is
+ * only read as a number or a flag (connection, content-length, ...) have no slot.
+ */
+static str_buffer_t *header_slot(http_headers_in_t *h, unsigned state) {
+  switch (state) {
+  case h_host:
+    return &h->host;
+  case h_content_type:
+    return &h->content_type;
+  case h_content_range:
+    return &h->content_range;
+  case h_user_agent:
+    return &h->user_agent;
+  default:
+    return NULL;
+  }
+}
+
+/*
+ * Content-Length = 1*DIGIT, OWS allowed around it. match_index counts the digits and ws
+ * marks a gap after them, so "1 2" is rejected. The multiplication is checked against
+ * size_t overflow, a wrapped length would let a body be read as the next request.
+ */
+static int parse_content_length(http_parser_t *parser, http_headers_in_t *in, unsigned char ch) {
+  if (ch == ' ' || ch == '\t') {
+    if (parser->match_index)
+      parser->ws = 1;
+    return BROOK_HTTP_OK;
+  }
+
+  if (!IS_NUM(ch) || parser->ws)
+    return BROOK_HTTP_ERR_BAD_CONTENT_LEN;
+
+  size_t d = (size_t)(ch - '0');
+  if (in->content_length_n > (SIZE_MAX - d) / 10)
+    return BROOK_HTTP_ERR_BAD_CONTENT_LEN;
+
+  in->content_length_n = in->content_length_n * 10 + d;
+  if (parser->match_index < 255)
+    parser->match_index++;
+  return BROOK_HTTP_OK;
+}
+
+/* Closes a Connection token: "close" turns keep_alive off, any other token is ignored */
+static void connection_token_end(http_parser_t *parser, http_headers_in_t *in) {
+  if (parser->header_match_mask && parser->match_index == sizeof("close") - 1)
+    in->keep_alive = 0;
+
+  parser->header_match_mask = 1;
+  parser->match_index = 0;
+  parser->ws = 0;
+}
+
+/*
+ * Connection = #connection-option, a comma separated list of tokens (case-insensitive).
+ * Only "close" matters, since we only speak HTTP/1.1 where keep-alive is the default.
+ * header_match_mask is 1 while the current token can still be "close", match_index is
+ * its length so far (saturating), ws marks a gap inside it ("close x" is invalid).
+ */
+static int parse_connection(http_parser_t *parser, http_headers_in_t *in, unsigned char ch) {
+  static const char word[] = "close";
+
+  if (ch == ',') {
+    connection_token_end(parser, in);
+    return BROOK_HTTP_OK;
+  }
+
+  if (ch == ' ' || ch == '\t') {
+    if (parser->match_index)
+      parser->ws = 1;
+    return BROOK_HTTP_OK;
+  }
+
+  unsigned char c = (unsigned char)tokens[ch];
+  if (c == 0 || parser->ws)
+    return BROOK_HTTP_ERR_BAD_HEADER;
+
+  if (parser->match_index >= sizeof(word) - 1 || c != (unsigned char)word[parser->match_index])
+    parser->header_match_mask = 0;
+
+  if (parser->match_index < 255)
+    parser->match_index++;
+  return BROOK_HTTP_OK;
+}
+
+/* End of a header value: checks the ones that need a complete value */
+static int header_value_end(http_parser_t *parser, http_headers_in_t *in) {
+  switch (parser->header_state) {
+  case h_content_length:
+    return parser->match_index ? BROOK_HTTP_OK : BROOK_HTTP_ERR_BAD_CONTENT_LEN;
+  case h_connection:
+    connection_token_end(parser, in);
+    return BROOK_HTTP_OK;
+  default:
+    return BROOK_HTTP_OK;
+  }
+}
+
+/*
+ * The empty line after the headers: checks the request as a whole and decides what
+ * comes next, the body (Content-Length bytes) or nothing (s_req_done).
+ */
+static int headers_end(http_t *http) {
+  http_parser_t *parser = &http->parser;
+  http_headers_in_t *in = &http->req.headers_in;
+  uint32_t seen = parser->header_seen_mask;
+
+  parser->sub_state = 0;
+
+  // RFC 9112 3.2: an HTTP/1.1 request needs a Host (repeats were already rejected)
+  if (!(seen & (1u << h_host)))
+    return BROOK_HTTP_ERR_BAD_REQUEST;
+
+  if (seen & (1u << h_transfer_encoding)) {
+    // RFC 9112 6.1: Transfer-Encoding together with Content-Length is a smuggling vector
+    if (seen & (1u << h_content_length))
+      return BROOK_HTTP_ERR_BAD_REQUEST;
+    return BROOK_HTTP_ERR_NOT_IMPLEMENTED; // chunked bodies are not supported yet
+  }
+
+  if (in->content_length_n > BROOK_HTTP_BODY_MAX)
+    return BROOK_HTTP_ERR_BODY_TOO_BIG;
+
+  parser->state = in->content_length_n ? s_req_body : s_req_done;
+  return BROOK_HTTP_OK;
+}
+
+/*
+ * Header field name. One bit per known header in header_match_mask: it starts with all
+ * set and every byte that differs from a header's name clears that header's bit. At ':'
+ * the bit left whose name has exactly the length read is the header (a bit alone can be
+ * only a prefix, e.g. "ho" of "host"). No bit means h_general and the value is ignored.
+ * sub_state 1 = '\r' of the empty line (end of headers) already seen.
+ */
+int _http_parser_header_field(http_t *http) {
+
+  PARSER_CTX(http);
+
+  unsigned char ch = buffer->data[index];
+
+  if (++parser->header_bytes > BROOK_HTTP_HEADER_MAX)
+    return BROOK_HTTP_ERR_HEADER_TOO_BIG;
+
+  if (parser->sub_state == 1) {
+    if (ch != '\n')
+      return BROOK_HTTP_ERR_BAD_LINE_END;
+    return headers_end(http);
+  }
+
+  if (ch == ':') {
+    if (parser->match_index == 0)
+      goto bad;
+
+    parser->header_state = h_general;
+    for (uint32_t m = parser->header_match_mask; m; m &= m - 1) {
+      int i = __builtin_ctz(m);
+      if (header_names[i].len == parser->match_index) {
+        parser->header_state = (unsigned char)i;
+        break;
+      }
+    }
+
+    if (parser->header_state != h_general) {
+      uint32_t bit = 1u << parser->header_state;
+      if ((parser->header_seen_mask & bit) & HEADER_SINGLETON) {
+        logger_debug("http header error: repeated %s", header_names[parser->header_state].name);
+        return BROOK_HTTP_ERR_BAD_HEADER;
+      }
+      parser->header_seen_mask |= bit;
+    }
+
+    // a repeated header that may repeat (user-agent, ...) starts its value over
+    str_buffer_t *v = header_slot(&req->headers_in, parser->header_state);
+    if (v)
+      *v = (str_buffer_t){0};
+
+    parser->ws = 0;
+    parser->header_match_mask = 1; // connection: the first token can still be "close"
+    parser->state = s_req_header_value;
+    parser->match_index = 0;
+    return BROOK_HTTP_OK;
+  }
+
+  if (ch == '\r' && parser->match_index == 0) {
+    parser->sub_state = 1;
+    return BROOK_HTTP_OK;
+  }
+
+  // field-name is a token: tokens[] is 0 for anything else, and lowercases the rest
+  unsigned char c = (unsigned char)tokens[ch];
+  if (c == 0)
+    goto bad;
+
+  if (parser->match_index == 255)
+    return BROOK_HTTP_ERR_HEADER_TOO_BIG;
+
+  if (parser->match_index == 0)
+    parser->header_match_mask = (1u << h_general) - 1;
+
+  // names are lowercase and end in '\0', which c (never 0) can't match: a header that
+  // ran out of chars is cleared too, so the read never goes past its name
+  for (uint32_t m = parser->header_match_mask; m; m &= m - 1) {
+    int i = __builtin_ctz(m);
+    if ((unsigned char)header_names[i].name[parser->match_index] != c)
+      parser->header_match_mask &= ~(1u << i);
+  }
+
+  parser->match_index++;
+  return BROOK_HTTP_OK;
+
+bad:
+  logger_debug("http header error: invalid field name byte 0x%02x at position %u", ch, (unsigned)parser->match_index);
+  return BROOK_HTTP_ERR_BAD_HEADER;
+}
+
+/*
+ * Header value (RFC 9110 5.5: no leading or trailing OWS). Content-Length and Connection
+ * are read as a number and a flag. The others with a slot are kept as a reference: start
+ * at the first char that is not a space, and len only grows on a char that is not a space,
+ * adding the spaces waited in parser->ws (so inner spaces count and trailing ones never do).
+ * sub_state 1 = '\r' seen.
+ */
+int _http_parser_header_value(http_t *http) {
+
+  PARSER_CTX(http);
+
+  unsigned char ch = buffer->data[index];
+
+  if (++parser->header_bytes > BROOK_HTTP_HEADER_MAX)
+    return BROOK_HTTP_ERR_HEADER_TOO_BIG;
+
+  if (parser->sub_state == 1) {
+    if (ch != '\n')
+      return BROOK_HTTP_ERR_BAD_LINE_END;
+
+    int rc = header_value_end(parser, &req->headers_in);
+    if (rc != BROOK_HTTP_OK)
+      return rc;
+
+    parser->state = s_req_header_field;
+    parser->header_state = h_general;
+    parser->match_index = 0;
+    parser->sub_state = 0;
+    return BROOK_HTTP_OK;
+  }
+
+  if (ch == '\r') {
+    parser->sub_state = 1;
+    return BROOK_HTTP_OK;
+  }
+
+  if (!IS_HEADER_VALUE_CHAR(ch)) {
+    logger_debug("http header error: invalid value byte 0x%02x", ch);
+    return BROOK_HTTP_ERR_BAD_HEADER;
+  }
+
+  switch (parser->header_state) {
+  case h_content_length:
+    return parse_content_length(parser, &req->headers_in, ch);
+  case h_connection:
+    return parse_connection(parser, &req->headers_in, ch);
+  default:
+    break;
+  }
+
+  str_buffer_t *v = header_slot(&req->headers_in, parser->header_state);
+  if (v == NULL)
+    return BROOK_HTTP_OK;
+
+  if (ch == ' ' || ch == '\t') {
+    if (v->len)
+      parser->ws++;
+    return BROOK_HTTP_OK;
+  }
+
+  if (v->len == 0) {
+    v->b = buffer;
+    v->start = index;
+  }
+  v->len += parser->ws + 1u;
+  parser->ws = 0;
+  return BROOK_HTTP_OK;
+}
+
+/*
+ * The body is kept as a reference like the other tokens: body.len counts the bytes read
+ * and the request is done when it reaches Content-Length.
+ */
+int _http_parser_body(http_t *http) {
+
+  PARSER_CTX(http);
+
+  str_buffer_t *body = &req->body;
+
+  if (body->len == 0) {
+    body->b = buffer;
+    body->start = index;
+  }
+
+  if (++body->len == req->headers_in.content_length_n)
+    parser->state = s_req_done;
+
+  return BROOK_HTTP_OK;
+}
+
+/*
+ * Puts the parser and the request in the state of a new request, keeping the cursor so
+ * the next request of a keep-alive connection continues where the last one ended.
+ * HTTP/1.1 connections are persistent unless a "Connection: close" says otherwise.
+ */
+void http_parser_reset(http_t *http) {
+
+  buffer_t *cursor = http->parser.cursor;
+  size_t offset = http->parser.cursor_offset;
+
+  http->req = (http_request_t){0};
+  http->req.headers_in.keep_alive = 1;
+
+  http->parser = (http_parser_t){0};
+  http->parser.cursor = cursor;
+  http->parser.cursor_offset = offset;
 }

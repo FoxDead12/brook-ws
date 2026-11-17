@@ -22,10 +22,16 @@ int _http_parser_method(http_t *http);
 int _http_parser_url(http_t *http);
 int _http_parser_params(http_t *http);
 int _http_parser_minor(http_t *http);
+int _http_parser_header_field(http_t *http);
+int _http_parser_header_value(http_t *http);
+int _http_parser_body(http_t *http);
 
 /*
  * All "public" functions avaliable to project
  * */
 int http_parser_on_data(http_t *http);
+
+/* clears the request and the parser state, keeps the cursor (keep-alive: next request) */
+void http_parser_reset(http_t *http);
 
 #endif // !PARSER_H

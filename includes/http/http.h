@@ -4,6 +4,7 @@
 #include "core/connection.h"
 #include "core/str.h"
 #include <stddef.h>
+#include <stdint.h>
 
 typedef enum {
   BROOK_HTTP_OK = 0,
@@ -18,6 +19,8 @@ typedef enum {
   BROOK_HTTP_ERR_BAD_HEADER,      // empty or invalid header name / value
   BROOK_HTTP_ERR_BAD_CONTENT_LEN, // content-length is not a number
   BROOK_HTTP_ERR_HEADER_TOO_BIG,  // headers bigger than BROOK_HTTP_HEADER_MAX
+  BROOK_HTTP_ERR_NOT_IMPLEMENTED, // Transfer-Encoding (chunked bodies) is not supported yet
+  BROOK_HTTP_ERR_BODY_TOO_BIG,    // content-length bigger than BROOK_HTTP_BODY_MAX
 
   BROOK_HTTP_ERR_COUNT
 } brook_http_err_e;
@@ -37,12 +40,40 @@ typedef enum {
   s_req_done
 } http_parser_state_e;
 
+// RFC 9112 3: recipients should support at least 8000 octets in the request line
+#define BROOK_HTTP_HEADER_MAX 8192
+
+// the body stays in the chain buffers until the request is handled, so it needs a limit
+#define BROOK_HTTP_BODY_MAX (1u << 20)
+
+/*
+ * Headers the server cares about. The value is the index in header_names[] and also the
+ * bit used in the match/seen masks. h_general is any other header (and the number of
+ * known ones), its value is ignored.
+ */
+typedef enum {
+  h_host,
+  h_connection,
+  h_content_length,
+  h_content_type,
+  h_content_range,
+  h_user_agent,
+  h_transfer_encoding,
+  h_general
+} http_header_e;
+
 typedef struct {
   buffer_t *cursor;
   size_t cursor_offset;
   http_parser_state_e state;
   unsigned char match_index; // chars of the current literal (method, version) already matched
   unsigned char sub_state;   // url/params: hex digits still owed by a '%'; version: line end position
+
+  unsigned char header_state;  // http_header_e of the header whose value is being read
+  uint32_t header_match_mask;  // known headers still matching the field name read so far
+  uint32_t header_seen_mask;   // known headers already present in this request
+  uint16_t header_bytes;       // bytes of the header block read so far, limited by BROOK_HTTP_HEADER_MAX
+  uint16_t ws;                 // spaces of a header value waiting to see if the value goes on
 } http_parser_t;
 
 typedef enum {
@@ -70,6 +101,8 @@ typedef struct {
   str_buffer_t url;
   str_buffer_t params; // raw query string after '?', empty when len == 0
   http_headers_in_t headers_in;
+  str_buffer_t body; // Content-Length bytes after the headers, empty when len == 0
+  size_t bytes;      // bytes of this request read so far (line + headers + body): what chain_consume frees at the end
 } http_request_t;
 
 typedef struct {
