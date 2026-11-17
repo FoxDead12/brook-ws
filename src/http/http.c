@@ -41,6 +41,12 @@ int http_on_data(connection_t *con) {
   // parser will handle the work
   int rc = http_parser_on_data(http);
 
+  if (rc == BROOK_DONE) {
+    // request was parsed
+  } else if (rc != BROOK_OK) {
+    // TODO: will fire the error
+  }
+
   return BROOK_OK;
 }
 

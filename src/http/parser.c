@@ -587,10 +587,12 @@ static int header_value_end(http_parser_t *parser, http_headers_in_t *in) {
 /*
  * Debug log of a header whose value was just read. Tokens are copied (bounded, on the
  * stack) only to be printed in one log line, they are not stored anywhere else.
+ * Headers that carry secrets (cookie, authorization) must log only their len when they
+ * are added to http_header_e, the log file is on disk.
  */
 static void log_header_value(const http_parser_t *parser, http_headers_in_t *in) {
   unsigned state = parser->header_state;
-  char text[96];
+  char text[256];
 
   switch (state) {
   case h_content_length:
