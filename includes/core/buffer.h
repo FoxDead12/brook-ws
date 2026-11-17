@@ -8,7 +8,7 @@ typedef struct buffer_s {
   struct buffer_s *next;
   int len; // total bytes in use
   int pos; // total bytes out/write
-  char data[BUFFER_SIZE];
+  unsigned char data[BUFFER_SIZE];
 } buffer_t;
 
 typedef struct {
