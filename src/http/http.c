@@ -1,6 +1,5 @@
 #include "http/http.h"
 
-#include "core/connection.h"
 #include "core/types.h"
 
 /*
