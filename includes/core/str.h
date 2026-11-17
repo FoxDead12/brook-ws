@@ -10,4 +10,19 @@ typedef struct {
 
 } str_buffer_t;
 
+/*
+ * A str_buffer_t is a reference (first buffer, start, total len) to bytes that may span
+ * several buffers of a chain. These helpers walk the chain, so no copy is made.
+ * They are only valid while the buffers are still in the chain (before chain_consume).
+ */
+
+/* 1 if the token has exactly the n bytes of lit, 0 otherwise */
+int str_buffer_eq(const str_buffer_t *s, const char *lit, size_t n);
+
+/* eq against a string literal: STR_EQ(&req->url, "/health") */
+#define STR_EQ(s, lit) str_buffer_eq((s), (lit), sizeof(lit) - 1)
+
+/* writes the token to stdout, no newline */
+void str_buffer_print(const str_buffer_t *s);
+
 #endif // !STR_H
