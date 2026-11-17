@@ -42,7 +42,7 @@ typedef struct {
   size_t cursor_offset;
   http_parser_state_e state;
   unsigned char match_index; // chars of the current literal (method, version) already matched
-  unsigned char sub_state;   // params: 0 key start, 1 in key, 2 after '=', 3 in value
+  unsigned char sub_state;   // url/params: hex digits still owed by a '%'; version: line end position
 } http_parser_t;
 
 typedef enum {

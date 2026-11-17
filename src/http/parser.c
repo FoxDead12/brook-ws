@@ -162,39 +162,12 @@ static const char tokens[256] = {
     0,
 };
 
+/* Bitmap (bit i of byte i>>3) of the chars allowed raw in the request-target, RFC 3986:
+ *   unreserved (ALPHA DIGIT - . _ ~) / sub-delims (! $ & ' ( ) * + , ; =) / ":" / "@" / "/"
+ * '%' (needs 2 hex digits) and '?' (query only) are handled by the parser. */
 static const uint8_t url_chars[32] = {
-    /*   0 nul    1 soh    2 stx    3 etx    4 eot    5 enq    6 ack    7 bel  */
-    0 | 0 | 0 | 0 | 0 | 0 | 0 | 0,
-    /*   8 bs     9 ht    10 nl    11 vt    12 np    13 cr    14 so    15 si   */
-    0 | T(2) | 0 | 0 | T(16) | 0 | 0 | 0,
-    /*  16 dle   17 dc1   18 dc2   19 dc3   20 dc4   21 nak   22 syn   23 etb */
-    0 | 0 | 0 | 0 | 0 | 0 | 0 | 0,
-    /*  24 can   25 em    26 sub   27 esc   28 fs    29 gs    30 rs    31 us  */
-    0 | 0 | 0 | 0 | 0 | 0 | 0 | 0,
-    /*  32 sp    33  !    34  "    35  #    36  $    37  %    38  &    39  '  */
-    0 | 2 | 4 | 0 | 16 | 32 | 64 | 128,
-    /*  40  (    41  )    42  *    43  +    44  ,    45  -    46  .    47  /  */
-    1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
-    /*  48  0    49  1    50  2    51  3    52  4    53  5    54  6    55  7  */
-    1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
-    /*  56  8    57  9    58  :    59  ;    60  <    61  =    62  >    63  ?  */
-    1 | 2 | 4 | 8 | 16 | 32 | 64 | 0,
-    /*  64  @    65  A    66  B    67  C    68  D    69  E    70  F    71  G  */
-    1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
-    /*  72  H    73  I    74  J    75  K    76  L    77  M    78  N    79  O  */
-    1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
-    /*  80  P    81  Q    82  R    83  S    84  T    85  U    86  V    87  W  */
-    1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
-    /*  88  X    89  Y    90  Z    91  [    92  \    93  ]    94  ^    95  _  */
-    1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
-    /*  96  `    97  a    98  b    99  c   100  d   101  e   102  f   103  g  */
-    1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
-    /* 104  h   105  i   106  j   107  k   108  l   109  m   110  n   111  o  */
-    1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
-    /* 112  p   113  q   114  r   115  s   116  t   117  u   118  v   119  w  */
-    1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
-    /* 120  x   121  y   122  z   123  {   124  |   125  }   126  ~   127 del */
-    1 | 2 | 4 | 8 | 16 | 32 | 64 | 0,
+    0x00, 0x00, 0x00, 0x00, 0xd2, 0xff, 0xff, 0x2f, 0xff, 0xff, 0xff, 0x87, 0xfe, 0xff, 0xff, 0x47,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const char http_minor[] = "HTTP/1.1";
 static const char *methods[] = {
@@ -360,6 +333,22 @@ bad:
 }
 
 /*
+ * Checks one char of the request-target (RFC 3986): a pchar or "/", or a pct-encoded
+ * "%XX". sub_state counts the hex digits still owed by a '%' (0 = not inside one).
+ */
+static int uri_char(http_parser_t *parser, unsigned char ch) {
+  if (parser->sub_state) {
+    parser->sub_state--;
+    return IS_HEX(ch);
+  }
+  if (ch == '%') {
+    parser->sub_state = 2;
+    return 1;
+  }
+  return IS_URL_CHAR(ch);
+}
+
+/*
  * The url is stored as a reference (buffer, start, len) and url.len is also the
  * match counter: 0 means we are at the first char. '?' and ' ' end the path.
  */
@@ -375,7 +364,7 @@ int _http_parser_url(http_t *http) {
       goto bad;
     url->b = buffer;
     url->start = index;
-  } else if (ch == ' ' || ch == '?') {
+  } else if (parser->sub_state == 0 && (ch == ' ' || ch == '?')) {
     parser->state = (ch == ' ') ? s_req_minor : s_req_params;
     return BROOK_HTTP_OK;
   } else if (url->b != buffer) {
@@ -383,7 +372,7 @@ int _http_parser_url(http_t *http) {
     return BROOK_HTTP_ERR_URL_TOO_LONG;
   }
 
-  if (!IS_URL_CHAR(ch))
+  if (!uri_char(parser, ch))
     goto bad;
 
   url->len++;
@@ -395,9 +384,9 @@ bad:
 }
 
 /*
- * Validates the query string as key=value pairs separated by '&' and stores it raw
- * as a reference. params.len is the char counter (0 = first char of the query).
- * sub_state: 0 key start, 1 in key, 2 after '=', 3 in value. Only ' ' ends the query.
+ * Validates the query (RFC 3986: *( pchar / "/" / "?" ), pct-encoding checked) and
+ * stores it raw as a reference. Its key=value structure is not part of the RFC, so it
+ * is left to whoever reads it. params.len is the char counter (0 = no query).
  */
 int _http_parser_params(http_t *http) {
 
@@ -405,49 +394,30 @@ int _http_parser_params(http_t *http) {
 
   unsigned char ch = buffer->data[index];
   str_buffer_t *q = &req->params;
-  unsigned char sub = parser->sub_state;
+
+  // the space ends the query (an empty query is valid, it just leaves params.len == 0)
+  if (parser->sub_state == 0 && ch == ' ') {
+    parser->state = s_req_minor;
+    return BROOK_HTTP_OK;
+  }
 
   if (q->len == 0) {
     q->b = buffer;
     q->start = index;
-    sub = 0;
-  } else if (ch != ' ' && q->b != buffer) {
+  } else if (q->b != buffer) {
     // str_buffer_t references a single buffer, so the query can't cross to the next one
     return BROOK_HTTP_ERR_URL_TOO_LONG;
   }
 
-  switch (ch) {
-  case '=':
-    if (sub != 1)
-      goto bad;
-    sub = 2;
-    break;
-  case '&':
-    if (sub != 3)
-      goto bad;
-    sub = 0;
-    break;
-  case ' ':
-    if (sub != 3)
-      goto bad;
-    parser->state = s_req_minor;
-    parser->sub_state = 0;
-    return BROOK_HTTP_OK;
-  default:
-    if (!IS_URL_CHAR(ch))
-      goto bad;
-    if (sub == 0)
-      sub = 1;
-    else if (sub == 2)
-      sub = 3;
-  }
+  // query = *( pchar / "/" / "?" ), so '?' is the one extra char over the path
+  if (!(parser->sub_state == 0 && ch == '?') && !uri_char(parser, ch))
+    goto bad;
 
-  parser->sub_state = sub;
   q->len++;
   return BROOK_HTTP_OK;
 
 bad:
-  logger_debug("http params error: byte 0x%02x at position %u (state %u)", ch, q->len, (unsigned)sub);
+  logger_debug("http params error: invalid byte 0x%02x at position %u", ch, q->len);
   return BROOK_HTTP_ERR_BAD_PARAMS;
 }
 
