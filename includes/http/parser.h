@@ -20,6 +20,8 @@
 int _http_parser_on_char(http_t *http);
 int _http_parser_method(http_t *http);
 int _http_parser_url(http_t *http);
+int _http_parser_params(http_t *http);
+int _http_parser_minor(http_t *http);
 
 /*
  * All "public" functions avaliable to project

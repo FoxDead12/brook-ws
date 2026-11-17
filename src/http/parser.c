@@ -291,7 +291,9 @@ int _http_parser_on_char(http_t *http) {
   case s_req_url:
     return _http_parser_url(http);
   case s_req_params:
+    return _http_parser_params(http);
   case s_req_minor:
+    return _http_parser_minor(http);
   case s_req_header_field:
   case s_req_header_value:
   case s_req_headers_done:
@@ -390,4 +392,94 @@ int _http_parser_url(http_t *http) {
 bad:
   logger_debug("http url error: invalid byte 0x%02x at position %u", ch, url->len);
   return BROOK_HTTP_ERR_BAD_URL;
+}
+
+/*
+ * Validates the query string as key=value pairs separated by '&' and stores it raw
+ * as a reference. params.len is the char counter (0 = first char of the query).
+ * sub_state: 0 key start, 1 in key, 2 after '=', 3 in value. Only ' ' ends the query.
+ */
+int _http_parser_params(http_t *http) {
+
+  PARSER_CTX(http);
+
+  unsigned char ch = buffer->data[index];
+  str_buffer_t *q = &req->params;
+  unsigned char sub = parser->sub_state;
+
+  if (q->len == 0) {
+    q->b = buffer;
+    q->start = index;
+    sub = 0;
+  } else if (ch != ' ' && q->b != buffer) {
+    // str_buffer_t references a single buffer, so the query can't cross to the next one
+    return BROOK_HTTP_ERR_URL_TOO_LONG;
+  }
+
+  switch (ch) {
+  case '=':
+    if (sub != 1)
+      goto bad;
+    sub = 2;
+    break;
+  case '&':
+    if (sub != 3)
+      goto bad;
+    sub = 0;
+    break;
+  case ' ':
+    if (sub != 3)
+      goto bad;
+    parser->state = s_req_minor;
+    parser->sub_state = 0;
+    return BROOK_HTTP_OK;
+  default:
+    if (!IS_URL_CHAR(ch))
+      goto bad;
+    if (sub == 0)
+      sub = 1;
+    else if (sub == 2)
+      sub = 3;
+  }
+
+  parser->sub_state = sub;
+  q->len++;
+  return BROOK_HTTP_OK;
+
+bad:
+  logger_debug("http params error: byte 0x%02x at position %u (state %u)", ch, q->len, (unsigned)sub);
+  return BROOK_HTTP_ERR_BAD_PARAMS;
+}
+
+/*
+ * Only "HTTP/1.1" followed by "\r\n" is accepted. match_index walks the literal,
+ * then sub_state walks the line end (0 expects '\r', 1 expects '\n').
+ */
+int _http_parser_minor(http_t *http) {
+
+  PARSER_CTX(http);
+
+  unsigned char ch = buffer->data[index];
+
+  if (parser->match_index < sizeof(http_minor) - 1) {
+    if (ch != (unsigned char)http_minor[parser->match_index]) {
+      logger_debug("http version error: byte 0x%02x at position %u is not %s", ch, (unsigned)parser->match_index, http_minor);
+      return BROOK_HTTP_ERR_BAD_VERSION;
+    }
+    parser->match_index++;
+    return BROOK_HTTP_OK;
+  }
+
+  if (ch != "\r\n"[parser->sub_state]) {
+    logger_debug("http version error: bad line end, got 0x%02x", ch);
+    return BROOK_HTTP_ERR_BAD_LINE_END;
+  }
+
+  if (++parser->sub_state == 2) {
+    parser->state = s_req_header_field;
+    parser->match_index = 0;
+    parser->sub_state = 0;
+  }
+
+  return BROOK_HTTP_OK;
 }

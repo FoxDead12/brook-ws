@@ -42,6 +42,7 @@ typedef struct {
   size_t cursor_offset;
   http_parser_state_e state;
   unsigned char match_index; // chars of the current literal (method, version) already matched
+  unsigned char sub_state;   // params: 0 key start, 1 in key, 2 after '=', 3 in value
 } http_parser_t;
 
 typedef enum {
@@ -67,6 +68,7 @@ typedef struct {
 typedef struct {
   http_method_e method;
   str_buffer_t url;
+  str_buffer_t params; // raw query string after '?', empty when len == 0
   http_headers_in_t headers_in;
 } http_request_t;
 
