@@ -8,10 +8,18 @@
 #define IS_BASE64(c) (((c) >= 'A' && (c) <= 'Z') || ((c) >= 'a' && (c) <= 'z') || ((c) >= '0' && (c) <= '9') || ((c) == '+') || ((c) == '/'))
 #define IS_HEADER_VALUE_CHAR(c) ((c) == '\t' || ((c) >= 0x20 && (c) != 0x7f))
 #define HEADER(s) {s, sizeof(s) - 1}
+#define PARSER_CTX(http)                   \
+  http_request_t *req = &(http)->req;      \
+  http_parser_t *parser = &(http)->parser; \
+  buffer_t *buffer = parser->cursor;       \
+  size_t index = parser->cursor_offset
 
 /*
  * All "private" functions
  * */
+int _http_parser_on_char(http_t *http);
+int _http_parser_method(http_t *http);
+int _http_parser_url(http_t *http);
 
 /*
  * All "public" functions avaliable to project

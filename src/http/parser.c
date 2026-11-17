@@ -1,6 +1,7 @@
 #include "http/parser.h"
 #include "core/buffer.h"
 #include "core/connection.h"
+#include "core/logger.h"
 #include "core/pool.h"
 #include "core/types.h"
 #include "http/http.h"
@@ -225,19 +226,168 @@ int http_parser_on_data(http_t *http) {
 
   // if the cursor buffer is NULL is because is the first reading of connection
   // so we need make the cursor point to current buffer of chain we are parsing normaly the last
+  logger_debug("http_parser_on_data: start (cursor=%p, cursor_offset=%zu)", (void *)parser->cursor, (size_t)parser->cursor_offset);
+
   if (parser->cursor == NULL) {
-    parser->cursor = con->rbuffer.tail;
-    parser->cursor_offset = 0;
+    logger_debug("http_parser_on_data: first read, cursor -> rbuffer.head");
+    parser->cursor = con->rbuffer.head;
+
+    if (parser->cursor == NULL) {
+      return BROOK_OK;
+    }
+
+    parser->cursor_offset = parser->cursor->pos;
   }
 
-  // the cursor is where the parser is working
-  size_t offset_s = parser->cursor->pos + parser->cursor_offset;
-  size_t offset_e = BUFFER_SIZE - offset_s;
+  // walk the chain from the cursor until the last buffer
+  while (parser->cursor) {
+    buffer_t *b = parser->cursor;
 
-  for (int i = offset_s; i < offset_e; i++) {
-    unsigned char c = parser->cursor->data[i];
-    printf("%c", c);
+    logger_debug("http_parser_on_data: parsing buffer=%p range [%zu, %zu) (pos=%zu)", (void *)b, parser->cursor_offset, (size_t)b->len, (size_t)b->pos);
+
+    for (size_t i = parser->cursor_offset; i < (size_t)b->len; i++) {
+      int rc = _http_parser_on_char(http);
+      if (rc != BROOK_HTTP_OK)
+        return rc;
+
+      parser->cursor_offset++;
+
+      if (parser->state == s_req_done)
+        return BROOK_DONE;
+    }
+
+    // last buffer: wait for more data
+    if (b->next == NULL)
+      break;
+
+    parser->cursor = b->next;
+    parser->cursor_offset = parser->cursor->pos;
+  }
+
+  logger_debug("http_parser_on_data: end (cursor_offset=%zu)", (size_t)parser->cursor_offset);
+
+  return BROOK_OK;
+}
+
+/*
+ * Catch char by char in this method
+ */
+int _http_parser_on_char(http_t *http) {
+
+  http_parser_t *parser = &http->parser;
+  connection_t *con = http->con;
+
+  buffer_t *buffer = parser->cursor;
+  size_t index = parser->cursor_offset;
+
+  // get the current active char
+  unsigned char c = buffer->data[index];
+
+  // handle the state of parcer
+  switch (parser->state) {
+  case s_req_start:
+  case s_req_method:
+    return _http_parser_method(http);
+  case s_req_url:
+    return _http_parser_url(http);
+  case s_req_params:
+  case s_req_minor:
+  case s_req_header_field:
+  case s_req_header_value:
+  case s_req_headers_done:
+  case s_req_body:
+  case s_req_done:
+    break;
   }
 
   return BROOK_OK;
+}
+
+int _http_parser_method(http_t *http) {
+
+  PARSER_CTX(http);
+  unsigned char ch = buffer->data[index];
+
+  // first letter: 'P' is POST, PUT or PATCH, the second letter decides
+  if (parser->state == s_req_start) {
+    switch (ch) {
+    case 'G':
+      req->method = GET;
+      break;
+    case 'P':
+      req->method = POST;
+      break;
+    case 'D':
+      req->method = DELETE;
+      break;
+    default:
+      goto bad;
+    }
+    parser->state = s_req_method;
+    parser->match_index = 1;
+    return BROOK_HTTP_OK;
+  }
+
+  if (req->method == POST && parser->match_index == 1) {
+    if (ch == 'U')
+      req->method = PUT;
+    else if (ch == 'A')
+      req->method = PATCH;
+  }
+
+  // the rest must match the literal; its '\0' means the name ended and a space must follow
+  unsigned char expected = (unsigned char)methods[req->method][parser->match_index];
+
+  if (expected == '\0') {
+    if (ch != ' ')
+      goto bad;
+    parser->state = s_req_url;
+    parser->match_index = 0;
+    return BROOK_HTTP_OK;
+  }
+
+  if (ch != expected)
+    goto bad;
+
+  parser->match_index++;
+  return BROOK_HTTP_OK;
+
+bad:
+  logger_debug("http method error: byte 0x%02x at position %u", ch, (unsigned)parser->match_index);
+  return BROOK_HTTP_ERR_BAD_METHOD;
+}
+
+/*
+ * The url is stored as a reference (buffer, start, len) and url.len is also the
+ * match counter: 0 means we are at the first char. '?' and ' ' end the path.
+ */
+int _http_parser_url(http_t *http) {
+
+  PARSER_CTX(http);
+
+  unsigned char ch = buffer->data[index];
+  str_buffer_t *url = &req->url;
+
+  if (url->len == 0) {
+    if (ch != '/')
+      goto bad;
+    url->b = buffer;
+    url->start = index;
+  } else if (ch == ' ' || ch == '?') {
+    parser->state = (ch == ' ') ? s_req_minor : s_req_params;
+    return BROOK_HTTP_OK;
+  } else if (url->b != buffer) {
+    // str_buffer_t references a single buffer, so the url can't cross to the next one
+    return BROOK_HTTP_ERR_URL_TOO_LONG;
+  }
+
+  if (!IS_URL_CHAR(ch))
+    goto bad;
+
+  url->len++;
+  return BROOK_HTTP_OK;
+
+bad:
+  logger_debug("http url error: invalid byte 0x%02x at position %u", ch, url->len);
+  return BROOK_HTTP_ERR_BAD_URL;
 }

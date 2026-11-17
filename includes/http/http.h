@@ -5,10 +5,43 @@
 #include "core/str.h"
 #include <stddef.h>
 
+typedef enum {
+  BROOK_HTTP_OK = 0,
+
+  BROOK_HTTP_ERR_BAD_REQUEST,     // generic malformed request
+  BROOK_HTTP_ERR_BAD_METHOD,      // unknown or unsupported method
+  BROOK_HTTP_ERR_BAD_URL,         // url does not start with '/' or has an invalid char
+  BROOK_HTTP_ERR_URL_TOO_LONG,    // url bigger than the allowed limit
+  BROOK_HTTP_ERR_BAD_PARAMS,      // malformed query string (key=value&...)
+  BROOK_HTTP_ERR_BAD_VERSION,     // not HTTP/1.1
+  BROOK_HTTP_ERR_BAD_LINE_END,    // '\r' not followed by '\n'
+  BROOK_HTTP_ERR_BAD_HEADER,      // empty or invalid header name / value
+  BROOK_HTTP_ERR_BAD_CONTENT_LEN, // content-length is not a number
+  BROOK_HTTP_ERR_HEADER_TOO_BIG,  // headers bigger than BROOK_HTTP_HEADER_MAX
+
+  BROOK_HTTP_ERR_COUNT
+} brook_http_err_e;
+
+typedef enum {
+  s_req_start,
+  s_req_method,
+  s_req_url,
+  s_req_params,
+  s_req_minor,
+
+  s_req_header_field,
+  s_req_header_value,
+  s_req_headers_done,
+
+  s_req_body,
+  s_req_done
+} http_parser_state_e;
+
 typedef struct {
   buffer_t *cursor;
   size_t cursor_offset;
-  int state;
+  http_parser_state_e state;
+  unsigned char match_index; // chars of the current literal (method, version) already matched
 } http_parser_t;
 
 typedef enum {
@@ -33,6 +66,7 @@ typedef struct {
 
 typedef struct {
   http_method_e method;
+  str_buffer_t url;
   http_headers_in_t headers_in;
 } http_request_t;
 
