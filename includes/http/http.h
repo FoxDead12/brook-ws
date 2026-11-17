@@ -6,6 +6,20 @@
 #include <stddef.h>
 
 typedef struct {
+  buffer_t *cursor;
+  size_t cursor_offset;
+  int state;
+} http_parser_t;
+
+typedef enum {
+  DELETE,
+  GET,
+  POST,
+  PUT,
+  PATCH
+} http_method_e;
+
+typedef struct {
   str_buffer_t host;
   str_buffer_t connection;
   str_buffer_t content_length;
@@ -18,15 +32,15 @@ typedef struct {
 } http_headers_in_t;
 
 typedef struct {
-
-  connection_t *con;
-
-  buffer_t *head;
-  buffer_t *body;
-
+  http_method_e method;
   http_headers_in_t headers_in;
-
 } http_request_t;
+
+typedef struct {
+  connection_t *con;
+  http_request_t req;
+  http_parser_t parser;
+} http_t;
 
 /*
  * All "private" functions
@@ -35,5 +49,11 @@ typedef struct {
 /*
  * All "public" functions avaliable to project
  * */
+int http_on_open(connection_t *con);
+int http_on_data(connection_t *con);
+int http_on_write(connection_t *con);
+int http_on_close(connection_t *con);
+
+int http_setup(void);
 
 #endif // !HTTP_H

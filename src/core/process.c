@@ -3,13 +3,14 @@
 #include "core/poll.h"
 #include "core/socket.h"
 #include "core/types.h"
+#include "http/http.h"
 #include <stdio.h>
 
 static protocol_t http = {
-    .on_open = NULL,
-    .on_data = NULL,
-    .on_write = NULL,
-    .on_close = NULL,
+    .on_open = http_on_open,
+    .on_data = http_on_data,
+    .on_write = http_on_write,
+    .on_close = http_on_close,
 };
 
 /*
@@ -24,6 +25,9 @@ int process_start(void) {
 
   // setup the layer of connection
   connection_setup(socket_bind(3001), &http);
+
+  // setup the protocols
+  http_setup();
 
   // start the events loop, the worker is now block only working
   poll_start();
